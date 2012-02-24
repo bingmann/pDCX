@@ -4,25 +4,64 @@
 #define MOD1 2*(~0U/3)
 
 typedef unsigned int uint;
-typedef int new_type;
-using namespace std;
 
 class Pair {
 public:
 	uint name;
 	uint index;
-	bool less ( const Pair& a ) const;
-	bool operator< ( const Pair& a ) const;
-	void print() const;
+
+	bool less ( const Pair& a ) const {
+		return *this < a;
+	}
+	bool operator< ( const Pair& a ) const {
+		return index < a.index;
+		//return (index%3 < a.index%3) || ((index%3 == a.index%3) &&     (index/3 < a.index/3));
+	}
+	void print() const {
+		std::cout << name << " " << index << " ||";
+	}
 };
+
+/**
+ * splitter '% /' 3 < P '%/' 3  
+ */
+static inline
+bool cmpIndexModDiv( const Pair& splitter, const Pair& P ) {
+    return ( splitter.index % 3 < P.index % 3 ) ||
+           ( ( splitter.index % 3 == P.index % 3 ) && ( splitter.index / 3 < P.index / 3 ) );
+}
+static inline
+bool cmpGreaterIndex( const Pair& a, const Pair& b ) {
+    return ( a.index > b.index );
+}
+static inline
+bool cmpLessIndex( const Pair& a, const Pair& b ) {
+    return ( a.index < b.index );
+}
+static inline
+bool cmpLeqIndex( const Pair& a, const Pair& b ) {
+    return ( a.index < b.index );
+}
+static inline
+bool cmpSplitterPair( const uint& a, const Pair& b ) {
+    return ( a < b.index );
+}
 
 class Triple {
 public:
 	uint name[2];
 	uint index;
-	bool less (const Triple& a) const;
-	bool operator< (const Triple& a) const;
-	void print() const;
+
+	bool less ( const Triple& a ) const {
+		return * this < a;
+	}
+	bool operator< ( const Triple& a ) const {
+		return name[ 0 ] < a.name[ 0 ];
+		//return (index%3 < a.index%3) || ((index%3 == a.index%3) &&     (index/3 < a.index/3));
+	}
+	void print() const {
+		std::cout << name[0] << " " << name[1] << " " << index << " ||";
+	}
 };
 
 class Quadruple {
@@ -40,106 +79,104 @@ public:
 	void print() const;
 	void printchar() const;
 	void printcharS1() const;
-    
-
-
 };
-
 
 class Quintuple {
 public:
 	uint name[ 4 ];
 	uint index;
+
 	bool less ( const Quintuple& a ) const;
 	bool equal ( const Quintuple& a ) const;
 	bool operator< ( const Quintuple& a ) const;
 	bool operator== ( const Quintuple& a ) const;
 	bool operator<= ( const Quintuple& a ) const;
+
 	//bool operator>(const Quintuple& a) const;
 /** SO greater ModX-splitter */
 	inline bool cmpS0GreaterMod0( const Quintuple& mod0 ) const{
-		return ( this->name[ 0 ] > mod0.name[ 0 ] ) ||
-			( ( this->name[ 0 ] == mod0.name[ 0 ] ) && ( this->name[ 2 ] > mod0.name[ 2 ] ) );
+		return ( name[ 0 ] > mod0.name[ 0 ] ) ||
+			( ( name[ 0 ] == mod0.name[ 0 ] ) && ( name[ 2 ] > mod0.name[ 2 ] ) );
 	}
 
 	inline bool cmpS0GreaterMod1( const Quintuple& mod1 ) const{
-		return ( this->name[ 0 ] > mod1.name[ 1 ] ) ||
-			( ( this->name[ 0 ] == mod1.name[ 1 ] ) && ( this->name[ 2 ] > mod1.name[ 2 ] ) );
+		return ( name[ 0 ] > mod1.name[ 1 ] ) ||
+			( ( name[ 0 ] == mod1.name[ 1 ] ) && ( name[ 2 ] > mod1.name[ 2 ] ) );
 	}
 	inline bool cmpS0GreaterMod2( const Quintuple& mod2 ) const{
-		return ( this->name[ 0 ] > mod2.name[ 1 ] ) ||
-			( ( this->name[ 0 ] == mod2.name[ 1 ] ) &&
-			  ( ( this->name[ 1 ] > mod2.name[ 2 ] ) || ( ( this->name[ 1 ] == mod2.name[ 2 ] ) && ( this->name[ 3 ] > mod2.name[ 3 ] ) ) ) );
+		return ( name[ 0 ] > mod2.name[ 1 ] ) ||
+			( ( name[ 0 ] == mod2.name[ 1 ] ) &&
+			  ( ( name[ 1 ] > mod2.name[ 2 ] ) || ( ( name[ 1 ] == mod2.name[ 2 ] ) && ( name[ 3 ] > mod2.name[ 3 ] ) ) ) );
 	}
 
 	inline bool cmpS0Mod0(const Quintuple& mod0 ) const{
-		return ( this->name[ 0 ] < mod0.name[ 0 ] ) ||
-			( ( this->name[ 0 ] == mod0.name[ 0 ] ) && ( this->name[ 2 ] < mod0.name[ 2 ] ) );
+		return ( name[ 0 ] < mod0.name[ 0 ] ) ||
+			( ( name[ 0 ] == mod0.name[ 0 ] ) && ( name[ 2 ] < mod0.name[ 2 ] ) );
 	}
 	inline bool cmpS0Mod1( const Quintuple& mod1 ) const{
-		return ( this->name[ 0 ] < mod1.name[ 1 ] ) ||
-			( ( this->name[ 0 ] == mod1.name[ 1 ] ) && ( this->name[ 2 ] < mod1.name[ 2 ] ) );
+		return ( name[ 0 ] < mod1.name[ 1 ] ) ||
+			( ( name[ 0 ] == mod1.name[ 1 ] ) && ( name[ 2 ] < mod1.name[ 2 ] ) );
 	}
 	inline bool cmpS0Mod2( const Quintuple& mod2 ) const{
-		return ( this->name[ 0 ] < mod2.name[ 1 ] ) ||
-			( ( this->name[ 0 ] == mod2.name[ 1 ] ) &&
-			  ( ( this->name[ 1 ] < mod2.name[ 2 ] ) || ( ( this->name[ 1 ] == mod2.name[ 2 ] ) && ( this->name[ 3 ] < mod2.name[ 3 ] ) ) ) );
+		return ( name[ 0 ] < mod2.name[ 1 ] ) ||
+			( ( name[ 0 ] == mod2.name[ 1 ] ) &&
+			  ( ( name[ 1 ] < mod2.name[ 2 ] ) || ( ( name[ 1 ] == mod2.name[ 2 ] ) && ( name[ 3 ] < mod2.name[ 3 ] ) ) ) );
 	}
 
 /** S1 greater ModX-splitter */
 	inline bool cmpS1GreaterMod0( const Quintuple& mod0 ) const{
-		return ( this->name[ 1 ] > mod0.name[ 0 ] ) ||
-			( ( this->name[ 1 ] == mod0.name[ 0 ] ) && ( this->name[ 2 ] > mod0.name[ 2 ] ) );
+		return ( name[ 1 ] > mod0.name[ 0 ] ) ||
+			( ( name[ 1 ] == mod0.name[ 0 ] ) && ( name[ 2 ] > mod0.name[ 2 ] ) );
 	}
 	inline bool cmpS1GreaterMod12( const Quintuple& mod1 ) const{
-		return ( this->name[ 0 ] > mod1.name[ 0 ] );
+		return ( name[ 0 ] > mod1.name[ 0 ] );
 	}
 
 	inline bool cmpS1Mod0( const Quintuple& mod0 ) const{
-		return ( this->name[ 1 ] < mod0.name[ 0 ] ) ||
-			( ( this->name[ 1 ] == mod0.name[ 0 ] ) && ( this->name[ 2 ] < mod0.name[ 2 ] ) );
+		return ( name[ 1 ] < mod0.name[ 0 ] ) ||
+			( ( name[ 1 ] == mod0.name[ 0 ] ) && ( name[ 2 ] < mod0.name[ 2 ] ) );
 	}
 	inline bool cmpS1Mod12( const Quintuple& mod1 ) const{
-		return ( this->name[ 0 ] < mod1.name[ 0 ] );
+		return ( name[ 0 ] < mod1.name[ 0 ] );
 	}
 /** S2 greater ModX-splitter */
 	inline bool cmpS2GreaterMod0( const Quintuple& mod0 ) const{
-		return ( this->name[ 1 ] > mod0.name[ 0 ] ) ||
-			( ( this->name[ 1 ] == mod0.name[ 0 ] ) &&
-			  ( ( this->name[ 2 ] > mod0.name[ 1 ] ) || ( ( this->name[ 2 ] == mod0.name[ 1 ] ) && ( this->name[ 3 ] > mod0.name[ 3 ] ) ) ) );
+		return ( name[ 1 ] > mod0.name[ 0 ] ) ||
+			( ( name[ 1 ] == mod0.name[ 0 ] ) &&
+			  ( ( name[ 2 ] > mod0.name[ 1 ] ) || ( ( name[ 2 ] == mod0.name[ 1 ] ) && ( name[ 3 ] > mod0.name[ 3 ] ) ) ) );
 	}
 	inline bool cmpS2GreaterMod12( const Quintuple& mod1 )const {
-		return ( this->name[ 0 ] > mod1.name[ 0 ] );
+		return ( name[ 0 ] > mod1.name[ 0 ] );
 	}
 
 	inline bool cmpS2Mod0( const Quintuple& mod0 ) const{
-		return ( this->name[ 1 ] < mod0.name[ 0 ] ) ||
-			( ( this->name[ 1 ] == mod0.name[ 0 ] ) &&
-			  ( ( this->name[ 2 ] < mod0.name[ 1 ] ) || ( ( this->name[ 2 ] == mod0.name[ 1 ] ) && ( this->name[ 3 ] < mod0.name[ 3 ] ) ) ) );
+		return ( name[ 1 ] < mod0.name[ 0 ] ) ||
+			( ( name[ 1 ] == mod0.name[ 0 ] ) &&
+			  ( ( name[ 2 ] < mod0.name[ 1 ] ) || ( ( name[ 2 ] == mod0.name[ 1 ] ) && ( name[ 3 ] < mod0.name[ 3 ] ) ) ) );
 	}
 	inline bool cmpS2Mod12( const Quintuple& mod1 )const {
-		return ( this->name[ 0 ] < mod1.name[ 0 ] );
+		return ( name[ 0 ] < mod1.name[ 0 ] );
 	}
 
 
     inline bool operator> (const Quintuple& a) const {
-        if(this->index < MOD0){
+        if(index < MOD0){
             if(a.index<MOD0){
-                return this->cmpS0GreaterMod0(a);
+                return cmpS0GreaterMod0(a);
             }else if(a.index<MOD1){
-                return this->cmpS0GreaterMod1(a);
+                return cmpS0GreaterMod1(a);
             }else 
-                return this->cmpS0GreaterMod2(a);
-        }else if(this->index < MOD1){
+                return cmpS0GreaterMod2(a);
+        }else if(index < MOD1){
             if(a.index<MOD0){
-                return this->cmpS1GreaterMod0(a);
+                return cmpS1GreaterMod0(a);
             }else
-                return this->cmpS1GreaterMod12(a);
+                return cmpS1GreaterMod12(a);
         }else{
             if(a.index<MOD0){
-                return this->cmpS2GreaterMod0(a);
+                return cmpS2GreaterMod0(a);
             }else 
-                return this->cmpS2GreaterMod12(a);
+                return cmpS2GreaterMod12(a);
         }
     }
 
@@ -284,7 +321,7 @@ inline uint findPos( T1* array, T2 splitter, uint size, bool (*cmp)(const T2&, c
 template <class T1, class T2>
 inline uint findpostest( T1* array, T2 splitter, uint size, bool (*cmp)(const T2&, const T1&)) {
     /*  find position of key (or next larger) in sorted array */
-    cout<<"splitter ";
+    std::cout<<"splitter ";
     splitter.print();
 
     uint left = 0, end = size, middle, done=0 ;
@@ -292,10 +329,10 @@ inline uint findpostest( T1* array, T2 splitter, uint size, bool (*cmp)(const T2
 
     while (!done && size > 0) {
         if(splitter.index==array[middle].index){
-            cout<<"done "<<middle<<" "<<endl;
+            std::cout<<"done "<<middle<<" "<<std::endl;
             done=1;
         }else{
-            cout<<"middle "<<middle<<" ";
+            std::cout<<"middle "<<middle<<" ";
             array[middle].print();
             
             if ( cmp(splitter,array[middle]) )
@@ -304,9 +341,9 @@ inline uint findpostest( T1* array, T2 splitter, uint size, bool (*cmp)(const T2
             middle = (left + size/2)>=end? end-1 :(left + size/2);
         }
     }
-    cout <<"cmp(splitter,array[middle]) "<<cmp(splitter,array[middle])<< endl;
+    std::cout <<"cmp(splitter,array[middle]) "<<cmp(splitter,array[middle])<< std::endl;
     while (!done && middle < end && cmp(splitter,array[middle]) ){
-            cout<<"hip-hip hurra "<<middle+1<<endl;
+            std::cout<<"hip-hip hurra "<<middle+1<<std::endl;
         ++middle;
     }
     return (middle>end)?end:middle;
@@ -372,7 +409,7 @@ void merge2( T1* S0, T1* S1, T1* S2, T1* Samples, uint size )
 {
     uint x0 = 0, x1 = 0, x2 = 0;
     uint nsa = 0;
-    //  cout<<"x0:"<<x0<<" n0:"<<n[0]<<endl;
+    //  std::cout<<"x0:"<<x0<<" n0:"<<n[0]<<std::endl;
     while ( x0 != size ) {
         /*  S0[x0].print();
             S1[x1].print();
@@ -387,23 +424,23 @@ void merge2( T1* S0, T1* S1, T1* S2, T1* Samples, uint size )
             Samples[ nsa++ ] = S1[ x1++ ]; // S1 < S0 und S1 < S2
         else
             Samples[ nsa++ ] = S2[ x2++ ];                                                              // S2 < S1 < S0
-        //      cout<<"SA["<<nsa-1<<"]="<<SA[nsa-1 ]<<endl;
-        if (x1 > size+1 || x2 > size+1) cout <<x0<<" "<< x1 <<" <= "<<size+1<<" "<<x2<<" <= "<<size+1<<endl;
+        //      std::cout<<"SA["<<nsa-1<<"]="<<SA[nsa-1 ]<<std::endl;
+        if (x1 > size+1 || x2 > size+1) std::cout <<x0<<" "<< x1 <<" <= "<<size+1<<" "<<x2<<" <= "<<size+1<<std::endl;
         assert( x1 <= size+1 && x2 <= size+1 );
     }
-    //  cout<<"x1:"<<x1<<" n1:"<<n[1]<<endl;
+    //  std::cout<<"x1:"<<x1<<" n1:"<<n[1]<<std::endl;
     while ( x1 !=size ) { //sind noch S1-Tuple übrig
         if ( S1[ x1 ].name[ 0 ] < S2[ x2 ].name[ 0 ] )
             Samples[ nsa++ ] = S1[ x1++ ];
         else
             Samples[ nsa++ ] = S2[ x2++ ];
-        //      cout<<"SA["<<nsa-1<<"]="<<SA[nsa-1 ]<<endl;
+        //      std::cout<<"SA["<<nsa-1<<"]="<<SA[nsa-1 ]<<std::endl;
         assert( x2 <= size+1 );
     }
-    //  cout<<"x2:"<<x2<<" n2:"<<n[2]<<endl;
+    //  std::cout<<"x2:"<<x2<<" n2:"<<n[2]<<std::endl;
     while ( x2 != size ) { //sind noch S2-Tuple übrig
         Samples[ nsa++ ] = S2[ x2++ ];
-        //      cout<<"SA["<<nsa-1<<"]="<<SA[nsa-1 ]<<endl;
+        //      std::cout<<"SA["<<nsa-1<<"]="<<SA[nsa-1 ]<<std::endl;
     }
 }
 

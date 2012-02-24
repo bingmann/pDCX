@@ -11,8 +11,10 @@
 
 #ifndef UTIL
 #define UTIL
+
 typedef unsigned char uchar;
 typedef unsigned int uint;
+
 using namespace std;
 
 // default debug level. will be overidden e.g. if debug.h is included
@@ -25,31 +27,37 @@ using namespace std;
 #else
 #define Debug0(A) 
 #endif
+
 #if DEBUGLEVEL >= 1
 #define Debug1(A) A
 #else
 #define Debug1(A) 
 #endif
+
 #if DEBUGLEVEL >= 2
 #define Debug2(A) A
 #else
 #define Debug2(A) 
 #endif
+
 #if DEBUGLEVEL >= 3
 #define Debug3(A) A
 #else
 #define Debug3(A) 
 #endif
+
 #if DEBUGLEVEL >= 4
 #define Debug4(A) A
 #else
 #define Debug4(A) 
 #endif
+
 #if DEBUGLEVEL >= 5
 #define Debug5(A) A
 #else
 #define Debug5(A) 
 #endif
+
 #if DEBUGLEVEL >= 6
 #define Debug6(A) A
 #else

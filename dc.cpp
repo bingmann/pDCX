@@ -24,8 +24,10 @@
 #include <iostream>
 #include <iomanip>
 #include <fstream>
+#include <algorithm>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <stdlib.h>
 
 #include "tuple.h"
 
@@ -34,10 +36,7 @@
 #include <cassert>
 #include <cmath>
 
-using namespace std;
-
 typedef unsigned int	uint;
-typedef int				new_type;
 
 #define MAX_INT ~1U
 #define MAX_INT_SAMPLE ~0U
@@ -130,7 +129,7 @@ int ausgabeCPU;
 Debug1(
     double dc3StartTime;  // complete time
     double dc3FinishTime=0;
-) 
+)
 
 Debug2(
     double starttime;
@@ -196,16 +195,21 @@ void mpi_get_init()
  */
 uint* dc3( uint* inbuffer, uint filelength, uint* salen )
 {
-
 	// Debug6( cout << "dc3 gestartet" << endl; )
+
     /** Tupel einlesen*/
+
     //Anzahl mod 1, mod 2, mod 3 Tupel berechnen. Ist für jedes PE +-1 Element gleich
     uint locArraylen = ( filelength + size - 1 ) / size ;
-    uint k = (uint)sqrt(2.0 * locArraylen / 3.0 / size)*samplefactor;
+    uint k = (uint)sqrt(2.0 * locArraylen / 3.0 / size) * samplefactor;
+
 // Debug5(  if ( myproc == ROOT ) cout << "samplefactor=" << k <<" |Tuple|="<<2*(locArraylen/3)<<" in %="<<100*k/(2*locArraylen/3.0)<<endl;)
 //  int k=(uint) ceil(samplefactor*(sqrt(2.0*locArraylen/3.0)/100));
-    if(k>=2*(locArraylen/3))k=2*(locArraylen/3)-1;
+
+    if( k >= 2*(locArraylen/3)) k = 2*(locArraylen/3)-1;
+
 // if ( myproc == ROOT ) cout << "samplefactor=" << k <<" |Tuple|="<<2*(locArraylen/3)<<" in %="<<100*k/(2*locArraylen/3.0)<<endl;
+
     uint n[ 3 ];
     n[ 0 ] = n[ 1 ] = n[ 2 ] = ( locArraylen ) / 3;
     uint imod3[ 3 ] = {0, 1, 2};
@@ -268,13 +272,13 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
     }
 
     uint n12 = n[ 1 ] + n[ 2 ];
-// Debug6( if ( myproc == ausgabeCPU ) cout << myproc << " erstellt Quadruple - n[0] " << n[ 0 ] << " n[1] " << n[ 1 ] << " n[2] " << n[ 2 ] << endl; )
+    // Debug6( if ( myproc == ausgabeCPU ) cout << myproc << " erstellt Quadruple - n[0] " << n[ 0 ] << " n[1] " << n[ 1 ] << " n[2] " << n[ 2 ] << endl; )
     Quadruple* sa12 = new Quadruple[ n12 ];
 
     {
         uint j1 = 0,j2=n[1];
         /** zwei recht ähnliche Schleifen, mit dem Unterschied, dass eine davon 1 mal länger laufen kann */
-        uint x1 = imod3[1],x2 =imod3[2];    
+        uint x1 = imod3[1], x2 =imod3[2];    
         while (j1<n[1] || j2<n12){
             if(j1<n[1]){// i mod 3 = 1
                 sa12[ j1 ].index = x1 + displacement;
@@ -292,70 +296,77 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
     }
     
     /** Samplesort Quadruple start */
-	Debug2( starttime = MPI_Wtime();)
-        Switch0(sort( sa12, sa12 + n12 );)
-        Switch1(stable_sort( sa12, sa12 + n12 );)
-		Debug2( sortingTime += MPI_Wtime() - starttime;)
-		Debug6(stlSortTime=MPI_Wtime() - starttime;
+	Debug2( starttime = MPI_Wtime() );
+
+	Switch0( std::sort( sa12, sa12 + n12 ) );
+	Switch1( std::stable_sort( sa12, sa12 + n12 ) );
+
+	Debug2( sortingTime += MPI_Wtime() - starttime );
+	Debug6(	stlSortTime=MPI_Wtime() - starttime;
 //  MPI_Reduce(&MergeSA12, &stlSortTime, 1, MPI_DOUBLE, MPI_MAX, ROOT, MPI_COMM_WORLD);
 //  MPI_Reduce(&MergeSA12, &stlSortTime, 1, MPI_DOUBLE, MPI_MIN, ROOT, MPI_COMM_WORLD);
-			   cout<<myproc<<"   "<<stlSortTime<<" sec "<<n12<<" Tuple sort SA12 "<<endl;
-			)
-		/** Sampling */
-		Quadruple* samplebuf = new Quadruple[ k ];
+			cout<<myproc<<"   "<<stlSortTime<<" sec "<<n12<<" Tuple sort SA12 "<<endl;
+		);
+
+	/** Sampling */
+	Quadruple* samplebuf = new Quadruple[ k ];
     double dist = ( double ) n12 / k;
     for ( uint i = 0; i < k; i++ )  samplebuf[ i ] = sa12[ int( i * dist ) ];
 
 
     /**Proc 0 sammelt Samples ein*/
-	Debug2( sampleStartTime = MPI_Wtime(); )
-		Quadruple* samplerecvbuf=NULL;
+	Debug2( sampleStartTime = MPI_Wtime() );
+	Quadruple* samplerecvbuf=NULL;
     if ( myproc == ROOT )   samplerecvbuf = new Quadruple[ k * size ];
-	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime();)
-		MPI_Gather( samplebuf, k, MPI_QUADRUPLE, samplerecvbuf, k, MPI_QUADRUPLE, 0, MPI_COMM_WORLD );
-	Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime;)
-		/**Proc 0 ermittelt Splitter*/
-		delete[] samplebuf;
+	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime() );
+	MPI_Gather( samplebuf, k, MPI_QUADRUPLE, samplerecvbuf, k, MPI_QUADRUPLE, 0, MPI_COMM_WORLD );
+	Debug3( mpiComTime += MPI_Wtime()-mpiComStartTime );
+	/**Proc 0 ermittelt Splitter*/
+	delete[] samplebuf;
 
     Quadruple* pivbuf= new Quadruple[ size ];
     if ( myproc == ROOT ) {
-        Switch0(sort( samplerecvbuf, samplerecvbuf + k * size );)
-			Switch1(stable_sort( samplerecvbuf, samplerecvbuf + k * size );)
-			for ( int i = 0; i < size; i++ ) pivbuf[ i ] = samplerecvbuf[ i * k ];
+        Switch0( sort( samplerecvbuf, samplerecvbuf + k * size ) );
+		Switch1( stable_sort( samplerecvbuf, samplerecvbuf + k * size ) );
+		for ( int i = 0; i < size; i++ ) pivbuf[ i ] = samplerecvbuf[ i * k ];
         delete[] samplerecvbuf;
     }
-
+	
     /**Splitter verteilen*/
-	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime();)
-		MPI_Bcast( pivbuf, size, MPI_QUADRUPLE, ROOT, MPI_COMM_WORLD );
-	Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime;)
+	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime() );
+	MPI_Bcast( pivbuf, size, MPI_QUADRUPLE, ROOT, MPI_COMM_WORLD );
+	Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime );
 
-		Debug2( sampleTime+=MPI_Wtime()-sampleStartTime; )
+	Debug2( sampleTime+=MPI_Wtime()-sampleStartTime );
 
-		/**Einordnen der lokal sortierten Elemente anhand von Splitter*/
-		uint* pivpos= new uint[ size + 1 ];
+	/** Einordnen der lokal sortierten Elemente anhand von Splitter */
+	uint* pivpos= new uint[ size + 1 ];
+
     pivpos[0] = 0;
     for ( int i = 1; i < size; i++ ) 
-        pivpos[ i ] = findPos( sa12, pivbuf[ i ], n12, cmpSplitterGreaterS12 );
+        pivpos[i] = findPos( sa12, pivbuf[i], n12, cmpSplitterGreaterS12 );
     pivpos[ size ] = n12;
     delete[] pivbuf;
-    /**Ermitteln der Anzahl der zu versendenden bzw. empfangenden Elemente*/
+
+    /** Ermitteln der Anzahl der zu versendenden bzw. empfangenden Elemente */
     int* sendcnt;
     int* recvcnt;
-    sendcnt= new int[ size ];
-    recvcnt= new int[ size ];
+    sendcnt = new int[ size ];
+    recvcnt = new int[ size ];
     for ( int i = 0; i < size; i++ )
         sendcnt[ i ] = pivpos[ i + 1 ] > pivpos[ i ] ? pivpos[ i + 1 ] - pivpos[ i ] : 0;
     delete[] pivpos;
-	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime();)
 
-		MPI_Alltoall( sendcnt, 1, MPI_INT, recvcnt, 1, MPI_INT , MPI_COMM_WORLD );
-	Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime;)
+	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD));    mpiComStartTime = MPI_Wtime() );
 
-		int* sendoff;
+	MPI_Alltoall( sendcnt, 1, MPI_INT, recvcnt, 1, MPI_INT , MPI_COMM_WORLD );
+
+	Debug3( mpiComTime += MPI_Wtime()-mpiComStartTime );
+
+	int* sendoff;
     int* recvoff;
-    sendoff=new int[ size + 1 ];
-    recvoff=new int[ size + 1 ];
+    sendoff = new int[ size + 1 ];
+    recvoff = new int[ size + 1 ];
 
     sendoff[ 0 ] = recvoff[ 0 ] = 0;
     for ( int i = 1; i < size + 1; i++ ) {
@@ -369,25 +380,31 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
     else
         recvbuf = NULL;
 
+	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD)); starttime = MPI_Wtime());
 
-	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)        starttime = MPI_Wtime();)
-		MPI_Alltoallv( sa12, sendcnt, sendoff, MPI_QUADRUPLE, recvbuf, recvcnt, recvoff, MPI_QUADRUPLE, MPI_COMM_WORLD );
-	Debug3(     alltoallvTime += MPI_Wtime() - starttime;)
-		delete[] sa12;
+	MPI_Alltoallv( sa12, sendcnt, sendoff, MPI_QUADRUPLE, recvbuf, recvcnt, recvoff, MPI_QUADRUPLE, MPI_COMM_WORLD );
+
+	Debug3( alltoallvTime += MPI_Wtime() - starttime );
+
+	delete[] sa12;
     delete[] sendcnt;
     delete[] recvcnt;
     delete[] sendoff;
-	Debug5(  //Lastverteilung
-		double AlltoallSA12= MPI_Wtime() - starttime;
-		)
 
-		Pair* P;
+	Debug5(  //Lastverteilung
+		double AlltoallSA12 = MPI_Wtime() - starttime
+		);
+
+	Pair* P;
+
     if ( recvoff[ size ] ) {
 		/** merge */
         Quadruple * helparray4 = new Quadruple[ recvoff[ size ] ];
-		Debug2(     starttime = MPI_Wtime();)
-			mergesort( recvbuf, helparray4, 0, size, recvoff, cmpSplitterLeqS12 );
-		Debug2(     mergeTime += MPI_Wtime() - starttime;)
+		Debug2( starttime = MPI_Wtime() );
+
+		mergesort( recvbuf, helparray4, 0, size, recvoff, cmpSplitterLeqS12 );
+
+		Debug2( mergeTime += MPI_Wtime() - starttime );
 
 		{
 			Debug5(  //Lastverteilung
@@ -415,16 +432,17 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
 				if (myproc==ROOT) {cout<< setw( space )<<min<< setw( space )<<max<< setw( space )<<max-min<< setw( space );
 					cout.precision(4);
 					cout << (double)(max-min)/min*100<< setw( space )<<100*k/(2*locArraylen/3.0)<< setw( space )<< minMergeSA12<< setw( space )<<maxMergeSA12<<setw (space)<<(maxMergeSA12-minMergeSA12)/minMergeSA12*100 << setw( space )<<minAlltoallSA12<< setw( space )<< maxAlltoallSA12<<"  SA12"<<endl;}
-				)
-				}
+				);
+		}
         delete[] helparray4;
 
 		/** Lexicographical naming   */
         P = new Pair[ recvoff[ size ] ];
         namelex( recvbuf, P, recvoff[ size ] ) ;
 
-    } else {
-        cout <<myproc<<" hat nichts bekommen"<< endl;
+    }
+	else {
+        cout << myproc << " hat nichts bekommen" << endl;
         P = NULL;
     }
 
@@ -432,20 +450,24 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
     /** recursion ? */
     int recursion = false;
 
-    Debug2(if (myproc==size-1) { 
-			name2tuple[counter++] = 1 - (double)((uint)(2*((double)filelength /3.0))-P[ recvoff[ size ] - 1 ].name )/((uint)(2*((double)filelength /3.0))); })
+    Debug2(
+		if (myproc==size-1) { 
+			name2tuple[counter++] = 1 - (double)((uint)(2*((double)filelength /3.0))-P[ recvoff[ size ] - 1 ].name )/((uint)(2*((double)filelength /3.0))); });
+	
+	if ( myproc == size - 1 )       //Was passiert wenn das letzte PE keine Elemente hat?
+		if ( P[ recvoff[ size ] - 1 ].name < (uint)(2*((double)filelength /3.0)) )
+			recursion = true;
 
-		if ( myproc == size - 1 )       //Was passiert wenn das letzte PE keine Elemente hat?
-			if ( P[ recvoff[ size ] - 1 ].name < (uint)(2*((double)filelength /3.0)) )
-				recursion = true;
-	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime();)
+	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime() );
 
-		MPI_Bcast( &recursion, 1, MPI_INT, size - 1, MPI_COMM_WORLD );
-	Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime;)
-		/** recursion ! */
+	MPI_Bcast( &recursion, 1, MPI_INT, size - 1, MPI_COMM_WORLD );
+
+	Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime );
+
+	/** recursion ! */
 	if ( recursion ) {
 //      if(myproc==ROOT) cout<<"Rekursion"<<endl;
-		uint names = (uint)(2*((double)filelength /3.0))+ 1;
+		uint names = (uint)(2*((double)filelength /3.0)) + 1;
 		uint newlocArraylen = ( names + size - 1 ) / size;
 		uint arraylen=recvoff[size];
 		uint* tmparray= new uint[arraylen];
@@ -456,49 +478,65 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
 		int* sendoff= new int[size+1];
 		int* recvcnt= new int[size];
 
-		for (int i=0 ; i<size ; i++){
-			t[i]=(i+1)*newlocArraylen;
-			sendcnt[i]=0;
+		for (int i=0 ; i<size ; i++) {
+			t[i] = (i+1) * newlocArraylen;
+			sendcnt[i] = 0;
 		}
-		uint half_names=names/2;
+		uint half_names = names / 2;
     
-		for (uint i=0 ; i< arraylen; i++)
-			if(P[i].index%3==2) tmparray[i]=findPosSATest(t, half_names + P[ i ].index / 3 ,size, sendcnt);
-			else tmparray[i] = findPosSATest(t, P[ i ].index / 3 ,size, sendcnt);
-		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime();)
+		for (uint i = 0 ; i < arraylen; i++) {
+			if (P[i].index%3==2) {
+				tmparray[i] = findPosSATest(t, half_names + P[ i ].index / 3 ,size, sendcnt);
+			}
+			else {
+				tmparray[i] = findPosSATest(t, P[ i ].index / 3 ,size, sendcnt);
+			}
+		}
+		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime() );
 
-			MPI_Alltoall( sendcnt, 1, MPI_INT, recvcnt, 1, MPI_INT , MPI_COMM_WORLD );
-		Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime;)
-			uint* index= new uint[size];
-		sendoff[0]=recvoff[0]=0;
-		for (int i=0 ; i<size ; i++){
-			index[i]=0;
-			sendoff[i+1]=sendcnt[i]+sendoff[i];
-			recvoff[i+1]=recvcnt[i]+recvoff[i];
+		MPI_Alltoall( sendcnt, 1, MPI_INT, recvcnt, 1, MPI_INT , MPI_COMM_WORLD );
+
+		Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime );
+
+		uint* index= new uint[size];
+
+		sendoff[0] = recvoff[0] = 0;
+
+		for (int i = 0 ; i < size ; i++) {
+			index[i] = 0;
+			sendoff[i+1] = sendcnt[i] + sendoff[i];
+			recvoff[i+1] = recvcnt[i] + recvoff[i];
 		}           
 
-		for (uint i=0; i< arraylen; i++)
+		for (uint i = 0; i < arraylen; i++)
 			sendarray[sendoff[tmparray[i]] + index[tmparray[i]]++]=P[i];
 
 		delete[] index;
 		delete[] P;
 		delete[] tmparray;
-		Pair* in= new Pair[recvoff[size]];
+
+		Pair* in = new Pair[recvoff[size]];
 		Pair* recvBufPair= new Pair[recvoff[size]+2];
-		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    starttime=MPI_Wtime();)
-			MPI_Alltoallv( sendarray, sendcnt, sendoff, MPI_PAIR, in, recvcnt, recvoff, MPI_PAIR, MPI_COMM_WORLD );
-		Debug3(alltoallvTime+= MPI_Wtime()-starttime;)
-			delete[] sendarray;
 
-		Debug2(starttime=MPI_Wtime();)
-			sortPairIndex(in, recvBufPair,recvoff[size], t, names);
-		Debug2(permuteTime+=MPI_Wtime()-starttime;)
+		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    starttime=MPI_Wtime() );
 
-			delete[] t;
+		MPI_Alltoallv( sendarray, sendcnt, sendoff, MPI_PAIR, in, recvcnt, recvoff, MPI_PAIR, MPI_COMM_WORLD );
+
+		Debug3( alltoallvTime+= MPI_Wtime()-starttime );
+
+		delete[] sendarray;
+
+		Debug2( starttime=MPI_Wtime() );
+
+		sortPairIndex(in, recvBufPair,recvoff[size], t, names);
+
+		Debug2( permuteTime+=MPI_Wtime()-starttime );
+
+		delete[] t;
 		delete[] in;
 
-		/**Sehr unwahrscheinlicher Fall: die ersten zwei Elemente werden    an das PE[size-2] gegeben jedoch hat
-		   das letzte PE nur ein Element.  */
+		/** Sehr unwahrscheinlicher Fall: die ersten zwei Elemente werden    an das PE[size-2] gegeben jedoch hat
+		    das letzte PE nur ein Element.  */
 		if ( myproc == size - 1 && recvoff[ size ] < 2 ) {
 			Debug0( cout << "Sehr dummer unwahrscheinlicher Fall eingetreten" << endl; );
 			recvBufPair[ recvoff[ size ] ].name = MIN_INT;
@@ -513,21 +551,25 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
 
 		/**Jedes PE muss seinem linken Nachbarn noch die ersten zwei Elemente schicken. Die letzte PE bekommt diese von PE 0 und mus diese danach mit 0 und MAX_INT überschreiben*/
 		Pair temp[ 2 ];
-		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime();)
+		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime() );
 
-			MPI_Sendrecv( recvBufPair, 2, MPI_PAIR, ( myproc - 1 + size ) % size, MSGTAG, temp, 2, MPI_PAIR, ( myproc + 1 ) % size , MSGTAG, MPI_COMM_WORLD, &status );
-		Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime;)
-			delete[] recvBufPair;
+		MPI_Sendrecv( recvBufPair, 2, MPI_PAIR, ( myproc - 1 + size ) % size, MSGTAG, temp, 2, MPI_PAIR, ( myproc + 1 ) % size , MSGTAG, MPI_COMM_WORLD, &status );
 
-		if ( myproc == size - 1 ) {//letzte PE hat naturgemäß zu wenig Elemente
+		Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime );
+
+		delete[] recvBufPair;
+
+		if ( myproc == size - 1 ) { //letzte PE hat naturgemäß zu wenig Elemente
 			newInBuffer[ recvoff[size] ] = 0;
 			for ( uint i = recvoff[size];i < newlocArraylen+2; i++ )
 				newInBuffer[ i ] = MAX_INT;
-		} else if ((uint)recvoff[size]!=newlocArraylen) {//vorletzte PE kann zu wenig Elemente haben?!? Führt vorher schon zu Fehler. s. Rekursion start.
+		}
+		else if ((uint)recvoff[size]!=newlocArraylen) { //vorletzte PE kann zu wenig Elemente haben?!? Führt vorher schon zu Fehler. s. Rekursion start.
 			newInBuffer[ recvoff[size] ] = 0;
 			for ( uint i = recvoff[size];i < newlocArraylen+2; i++ )
 				newInBuffer[ i ] = MAX_INT;
-		} else {//alle anderen PEs
+		}
+		else { //alle anderen PEs
 			newInBuffer[ newlocArraylen ] = temp[ 0 ].name;
 			newInBuffer[ newlocArraylen + 1 ] = temp[ 1 ].name;
 		}
@@ -535,27 +577,38 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
 
 		uint* sa12rec;
 		uint sa12len = 0;
+
+        // cerr<<myproc<<"alles ok"<<endl;
+
+		Debug2( rekursionStart[countRek++]= MPI_Wtime() );
+
+		sa12rec = dc3( newInBuffer, names, &sa12len );
+
 // cerr<<myproc<<"alles ok"<<endl;
-		Debug2( rekursionStart[countRek++]= MPI_Wtime();)
-			sa12rec = dc3( newInBuffer, names, &sa12len );
-// cerr<<myproc<<"alles ok"<<endl;
-		Debug2( rekursionEnd[--countRek]=   MPI_Wtime() - rekursionStart[countRek];)
-			uint* n1all = new uint[ size ];
+
+		Debug2( rekursionEnd[--countRek]=   MPI_Wtime() - rekursionStart[countRek] );
+
+		uint* n1all = new uint[ size ];
 		uint* n2all = new uint[ size ];
 
 		uint salenall;
-		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime();)
-			MPI_Allgather( &( n[ 1 ] ), 1, MPI_UNSIGNED, n1all, 1, MPI_UNSIGNED, MPI_COMM_WORLD );
+
+		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime() );
+
+		MPI_Allgather( &( n[ 1 ] ), 1, MPI_UNSIGNED, n1all, 1, MPI_UNSIGNED, MPI_COMM_WORLD );
 		MPI_Allgather( &( n[ 2 ] ), 1, MPI_UNSIGNED, n2all, 1, MPI_UNSIGNED, MPI_COMM_WORLD );
 		MPI_Scan(&sa12len, &salenall, 1, MPI_UNSIGNED, MPI_SUM, MPI_COMM_WORLD );
-		Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime;)
-			uint* n12all = new uint[ 2 * size ];
+
+		Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime );
+
+		uint* n12all = new uint[ 2 * size ];
+
 		n12all[ 0 ] = n1all[ 0 ];
 		for ( int i = 1; i < size ;i++ )
 			n12all[ i ] = n1all[ i ] + n12all[ i - 1 ];
 		for ( int i = size ; i < 2*size; i++ )
 			n12all[ i ] = n2all[ i - size ] + n12all[ i - 1 ];
-		n12all[ 2 * size - 1 ] ++; //die letzte 'Grenze wird um eins erhöht, damit das Element dem letzten PE gehört
+		n12all[ 2 * size - 1 ] ++; // die letzte 'Grenze wird um eins erhöht, damit das Element dem letzten PE gehört
 
 		delete[] n1all;
 		delete[] n2all;
@@ -566,24 +619,28 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
 
 		for ( uint i = 0; i < sa12len; i++ ) {
 			P[ i ].name = i + salenall;
-			//          if (myproc==ausgabeCPU) cout <<i + 1 + salenAll[myproc+1] - sa12len<<" saAll "<< salenAll[myproc] <<" sa12len "<< sa12len<< endl;
+			// if (myproc==ausgabeCPU) cout <<i + 1 + salenAll[myproc+1] - sa12len<<" saAll "<< salenAll[myproc] <<" sa12len "<< sa12len<< endl;
 			P[ i ].index = sa12rec[ i ];
 			sa12rec[ i ] = findPosSA( n12all, sa12rec[ i ], size, sendcnt );
                         
 //          sendcnt[sa12rec[i]]++;
 			Debug0( if( sa12rec[ i ] >= (uint)size )
-						cout << myproc << " Hier stimmt was nicht " << sa12rec[ i ] << " sollte kleiner sein als #PEs" << endl;)
-				}
+						cout << myproc << " Hier stimmt was nicht " << sa12rec[ i ] << " sollte kleiner sein als #PEs" << endl;
+				);
+		};
 //      delete[] salenAll;
 		sendarray = new Pair[ sa12len ];
-		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime();)
+		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime() );
 
-			MPI_Alltoall( sendcnt, 1, MPI_INT, recvcnt, 1, MPI_INT, MPI_COMM_WORLD );
-		Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime;)
+		MPI_Alltoall( sendcnt, 1, MPI_INT, recvcnt, 1, MPI_INT, MPI_COMM_WORLD );
 
-			sendoff[ 0 ] = 0;
+		Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime );
+
+		sendoff[ 0 ] = 0;
 		recvoff[ 0 ] = 0;
+
 		index = new uint[size];
+
 		for ( int i = 0 ; i < size; i++ ) {
 			index[ i ] = 0;
 			sendoff[ i + 1 ] = sendcnt[ i ] + sendoff[ i ];
@@ -598,79 +655,97 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
 		delete[] P;
 
 		Pair* recvarray = new Pair[ recvoff[ size ] + 2 ];
-		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)     starttime = MPI_Wtime();)
-			MPI_Alltoallv( sendarray, sendcnt, sendoff, MPI_PAIR, recvarray, recvcnt, recvoff, MPI_PAIR, MPI_COMM_WORLD );
-		Debug3( alltoallvTime += MPI_Wtime() - starttime;)
 
-			delete[] sendarray;
+		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)     starttime = MPI_Wtime() );
+
+		MPI_Alltoallv( sendarray, sendcnt, sendoff, MPI_PAIR, recvarray, recvcnt, recvoff, MPI_PAIR, MPI_COMM_WORLD );
+
+		Debug3( alltoallvTime += MPI_Wtime() - starttime );
+
+		delete[] sendarray;
 		uint half = ( locArraylen + 2 ) / 3 + 1;
 		P = new Pair[ 2 * half ];
 
-		Debug2( starttime = MPI_Wtime();)
-			sortPair( recvarray, P, recvoff[ size ], n12all, half );
-		Debug2( permuteTime += MPI_Wtime() - starttime;)
+		Debug2( starttime = MPI_Wtime() );
 
-			delete[] recvarray;
+		sortPair( recvarray, P, recvoff[ size ], n12all, half );
+
+		Debug2( permuteTime += MPI_Wtime() - starttime );
+
+		delete[] recvarray;
 		delete[] n12all;
+
 		Pair* sendTmp = new Pair[ 2 ];
 		Pair* recvTmp = new Pair[ 2 ];
+
 		sendTmp[ 0 ] = P[ 0 ];
 		sendTmp[ 1 ] = P[ half ];
-		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime();)
 
-			MPI_Sendrecv( sendTmp, 2, MPI_PAIR, ( myproc - 1 + size ) % size, MSGTAG, recvTmp, 2, MPI_PAIR, ( myproc + 1 ) % size , MSGTAG, MPI_COMM_WORLD, &status );
-		Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime;)
-			delete[] sendTmp;
+		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime() );
+
+		MPI_Sendrecv( sendTmp, 2, MPI_PAIR, ( myproc - 1 + size ) % size, MSGTAG, recvTmp, 2, MPI_PAIR, ( myproc + 1 ) % size , MSGTAG, MPI_COMM_WORLD, &status );
+
+		Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime );
+
+		delete[] sendTmp;
+
 		P[ n[ 1 ] ] = recvTmp[ 0 ];
 		P[ half + n[ 2 ] ] = recvTmp[ 1 ];
+
 		delete[] recvTmp;
 		delete[] sendcnt; //Hier richtig?
 		delete[] sendoff;
-		delete[]    recvcnt;
+		delete[] recvcnt;
 		delete[] recvoff;
+
 		uint* satmp = sortS0S1S2( inbuffer, P, locArraylen, n, imod3, salen, half );
 		return satmp;
 		/** end recursion */
-
-
 	}
 	else {
 //      Debug0(if ( myproc == ROOT )
 //          cout << "---------------------   keine  Recursion---------------- " << locArraylen << endl;)
 
 		/** Samplesort P nach Index */
-		Debug2(     starttime = MPI_Wtime();)
-			Switch0(sort( P, P + recvoff[ size ] );)//cmpLessIndex
-			Switch1(stable_sort( P, P + recvoff[ size ] );)//cmpLessIndex
-			Debug2(     sortingTime += MPI_Wtime() - starttime;)
-			Debug6(stlSortTime=MPI_Wtime() - starttime;
+		Debug2( starttime = MPI_Wtime() );
+
+		Switch0(sort( P, P + recvoff[ size ] ) ); // cmpLessIndex
+		Switch1(stable_sort( P, P + recvoff[ size ] ) ); // cmpLessIndex
+
+		Debug2( sortingTime += MPI_Wtime() - starttime );
+		Debug6(stlSortTime=MPI_Wtime() - starttime;
 //  MPI_Reduce(&MergeSA12, &stlSortTime, 1, MPI_DOUBLE, MPI_MAX, ROOT, MPI_COMM_WORLD);
 //  MPI_Reduce(&MergeSA12, &stlSortTime, 1, MPI_DOUBLE, MPI_MIN, ROOT, MPI_COMM_WORLD);
-				   cout<<myproc<<"   "<<stlSortTime<<" sec "<< recvoff[size]<<" Pair -- sort Pair Index "<<endl;
-				)
+			   cout<<myproc<<"   "<<stlSortTime<<" sec "<< recvoff[size]<<" Pair -- sort Pair Index "<<endl;
+			);
+
 /** testing */
-			uint* pivpos= new uint[size+1];
+		uint* pivpos= new uint[size+1];
 		int* sendcnt= new int[size];
 		int* sendoff= new int[size+1];
 		int* recvcnt= new int[size];
 //      int* recvoff= new int[size+1];
+
 /** end *****/
 		pivpos[ 0 ] = 0;
 		Pair ptemp;
 		ptemp.name=0;
 		for ( int i = 0; i < size - 1; i++ ) {
-			ptemp.index=( i + 1 ) * locArraylen;
+			ptemp.index = (i+1) * locArraylen;
 			pivpos[ i + 1 ] = findPos( P, ptemp , recvoff [ size ], cmpGreaterIndex );
 		}
 		pivpos[ size ] = recvoff[ size ];
 
 		for ( int i = 0; i < size; i++ )
 			sendcnt[ i ] = pivpos[ i + 1 ] > pivpos[ i ] ? pivpos[ i + 1 ] - pivpos[ i ] : 0;
-		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime();)
 
-			MPI_Alltoall( sendcnt, 1, MPI_INT, recvcnt, 1, MPI_INT , MPI_COMM_WORLD );
-		Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime;)
-			sendoff[ 0 ] = recvoff[ 0 ] = 0;
+		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime());
+
+		MPI_Alltoall( sendcnt, 1, MPI_INT, recvcnt, 1, MPI_INT , MPI_COMM_WORLD );
+
+		Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime);
+
+		sendoff[ 0 ] = recvoff[ 0 ] = 0;
 		for ( int i = 1; i <= size; i++ ) {
 			sendoff[ i ] = sendoff[ i - 1 ] + sendcnt[ i - 1 ];
 			recvoff[ i ] = recvoff[ i - 1 ] + recvcnt[ i - 1 ];
@@ -678,66 +753,78 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
 		recvoff[ size ] = recvoff[ size - 1 ] + recvcnt[ size - 1 ];
 		Pair* recvBufPair = new Pair[ recvoff[ size ] + 2 ];
 
-		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)     starttime = MPI_Wtime();)
-			MPI_Alltoallv( P, sendcnt, sendoff, MPI_PAIR, recvBufPair, recvcnt, recvoff, MPI_PAIR, MPI_COMM_WORLD );
-		Debug3( alltoallvTime += MPI_Wtime() - starttime;)
+		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)     starttime = MPI_Wtime() );
 
-			delete[] P;
+		MPI_Alltoallv( P, sendcnt, sendoff, MPI_PAIR, recvBufPair, recvcnt, recvoff, MPI_PAIR, MPI_COMM_WORLD );
+
+		Debug3( alltoallvTime += MPI_Wtime() - starttime );
+
+		delete[] P;
+
 		Pair* helparray2 = new Pair[ recvoff[ size ] ];
-		Debug2(starttime=MPI_Wtime();)
-			mergesort( recvBufPair, helparray2, 0, size, recvoff, cmpLessIndex );
-		Debug2(mergeTime += MPI_Wtime() - starttime;)
-			delete[] helparray2;
+		Debug2(starttime=MPI_Wtime());
+
+		mergesort( recvBufPair, helparray2, 0, size, recvoff, cmpLessIndex );
+
+		Debug2(mergeTime += MPI_Wtime() - starttime);
+		
+		delete[] helparray2;
 
 		if ( myproc == size - 1 ) {
-			if ( recvoff[ size ] == 1 )        //kann nur bei letztem PE auftreten?
+			if ( recvoff[ size ] == 1 ) {       //kann nur bei letztem PE auftreten?
 				if ( recvBufPair[ recvoff[ size ] - 1 ].index % 3 == 1 )
 					recvBufPair[ recvoff[ size ] ].index = recvBufPair[ recvoff[ size ] - 1 ].index + 1;
 				else
 					recvBufPair[ recvoff[ size ] ].index = recvBufPair[ recvoff[ size ] - 1 ].index + 2;
+			}
 		}
 
 		/**jedes PE erhält zwei Elemente am Ende mehr*/
 		Pair temp[ 2 ];
-		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime();)
+		Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime() );
 
-			MPI_Sendrecv( recvBufPair, 2, MPI_PAIR, ( myproc - 1 + size ) % size, MSGTAG, &temp, 2, MPI_PAIR, ( myproc + 1 ) % size , MSGTAG, MPI_COMM_WORLD, &status );
-		Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime;)
+		MPI_Sendrecv( recvBufPair, 2, MPI_PAIR, ( myproc - 1 + size ) % size, MSGTAG, &temp, 2, MPI_PAIR, ( myproc + 1 ) % size , MSGTAG, MPI_COMM_WORLD, &status );
 
-			if ( myproc == size - 1 ) {
-				recvBufPair[ recvoff[ size ] ].name = MAX_INT;
-				recvBufPair[ recvoff[ size ] + 1 ].name = MAX_INT;
-				if ( recvBufPair[ recvoff[ size ] - 1 ].index % 3 == 1 ) {
-					recvBufPair[ recvoff[ size ] ].index = recvBufPair[ recvoff[ size ] - 1 ].index + 1;
-					recvBufPair[ recvoff[ size ] + 1 ].index = recvBufPair[ recvoff[ size ] - 1 ].index + 3;
-				} else {
-					recvBufPair[ recvoff[ size ] ].index = recvBufPair[ recvoff[ size ] - 1 ].index + 2;
-					recvBufPair[ recvoff[ size ] + 1 ].index = recvBufPair[ recvoff[ size ] - 1 ].index + 3;
-				}
+		Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime);
+
+		if ( myproc == size - 1 ) {
+			recvBufPair[ recvoff[ size ] ].name = MAX_INT;
+			recvBufPair[ recvoff[ size ] + 1 ].name = MAX_INT;
+			if ( recvBufPair[ recvoff[ size ] - 1 ].index % 3 == 1 ) {
+				recvBufPair[ recvoff[ size ] ].index = recvBufPair[ recvoff[ size ] - 1 ].index + 1;
+				recvBufPair[ recvoff[ size ] + 1 ].index = recvBufPair[ recvoff[ size ] - 1 ].index + 3;
 			} else {
-				recvBufPair[ recvoff[ size ] ] = temp[ 0 ];
-				recvBufPair[ recvoff[ size ] + 1 ] = temp[ 1 ];
-				if ( myproc == size - 2 ) { //wenn das letzte PE nur mod 2 Tupel hat,...
-					if ( recvBufPair[ recvoff[ size ] ].index == recvBufPair[ recvoff[ size ] + 1 ].index )
-						recvBufPair[ recvoff[ size ] ].index = recvBufPair[ recvoff[ size ] ].index - 1;
-				}
+				recvBufPair[ recvoff[ size ] ].index = recvBufPair[ recvoff[ size ] - 1 ].index + 2;
+				recvBufPair[ recvoff[ size ] + 1 ].index = recvBufPair[ recvoff[ size ] - 1 ].index + 3;
 			}
+		}
+		else {
+			recvBufPair[ recvoff[ size ] ] = temp[ 0 ];
+			recvBufPair[ recvoff[ size ] + 1 ] = temp[ 1 ];
+			if ( myproc == size - 2 ) { //wenn das letzte PE nur mod 2 Tupel hat,...
+				if ( recvBufPair[ recvoff[ size ] ].index == recvBufPair[ recvoff[ size ] + 1 ].index )
+					recvBufPair[ recvoff[ size ] ].index = recvBufPair[ recvoff[ size ] ].index - 1;
+			}
+		}
+
 //      cout<<"CPU ["<<myproc<<"] nach rekursion"<<endl;
-		Debug2( starttime = MPI_Wtime();)
-			Switch0(sort( recvBufPair, recvBufPair + recvoff[ size ] + 2, cmpIndexModDiv );)
-			Switch1(stable_sort( recvBufPair, recvBufPair + recvoff[ size ] + 2, cmpIndexModDiv );)
-			Debug2( sortingTime += MPI_Wtime() - starttime;)
-			Debug6(stlSortTime=MPI_Wtime() - starttime;
+		Debug2( starttime = MPI_Wtime() );
+
+		Switch0(sort( recvBufPair, recvBufPair + recvoff[ size ] + 2, cmpIndexModDiv ) );
+		Switch1(stable_sort( recvBufPair, recvBufPair + recvoff[ size ] + 2, cmpIndexModDiv ) );
+
+		Debug2( sortingTime += MPI_Wtime() - starttime );
+		Debug6(stlSortTime=MPI_Wtime() - starttime;
 //  MPI_Reduce(&MergeSA12, &stlSortTime, 1, MPI_DOUBLE, MPI_MAX, ROOT, MPI_COMM_WORLD);
 //  MPI_Reduce(&MergeSA12, &stlSortTime, 1, MPI_DOUBLE, MPI_MIN, ROOT, MPI_COMM_WORLD);
-				   cout<<myproc<<"   "<<stlSortTime<<" sec "<<recvoff[ size ] + 2<<" Pair -- sort Pair %/ rekursion "<<endl;
-				)
-
-			uint half= n[1]+1;
+			   cout<<myproc<<"   "<<stlSortTime<<" sec "<<recvoff[ size ] + 2<<" Pair -- sort Pair %/ rekursion "<<endl;
+			);
+		
+		uint half= n[1]+1;
 
 		delete[] sendcnt; //Hier richtig?
 		delete[] sendoff;
-		delete[]    recvcnt;
+		delete[] recvcnt;
 		delete[] recvoff;
 
 		uint* satmp = sortS0S1S2( inbuffer, recvBufPair, locArraylen, n, imod3, salen, half );
@@ -759,11 +846,13 @@ inline void namelex( Quadruple* in, Pair* P, uint arraylen )
 {
     /** naming with local names */
     Quadruple temp;
-	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime();)
+	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD));    mpiComStartTime = MPI_Wtime() );
 
-		MPI_Sendrecv( &( in[ arraylen - 1 ] ), 1, MPI_QUADRUPLE, ( myproc + 1) % size, MSGTAG, &temp, 1, MPI_QUADRUPLE, ( myproc - 1 +size) % size , MSGTAG, MPI_COMM_WORLD, &status );
-	Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime;)
-		uint name = 0;
+	MPI_Sendrecv( &( in[ arraylen - 1 ] ), 1, MPI_QUADRUPLE, ( myproc + 1) % size, MSGTAG, &temp, 1, MPI_QUADRUPLE, ( myproc - 1 +size) % size , MSGTAG, MPI_COMM_WORLD, &status );
+
+	Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime);
+
+	uint name = 0;
     for ( uint i = 0; i < arraylen; i++ ) {
         if ( !( in[ i ] == temp ) ) {
             name++;
@@ -775,12 +864,14 @@ inline void namelex( Quadruple* in, Pair* P, uint arraylen )
     delete[] in;
     /** renaming with global names */
     uint namesglob;
-	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime();)
+	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime() );
+	
+	MPI_Scan( &name, &namesglob, 1, MPI_UNSIGNED, MPI_SUM, MPI_COMM_WORLD );
 
-		MPI_Scan( &name, &namesglob, 1, MPI_UNSIGNED, MPI_SUM, MPI_COMM_WORLD );
-	Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime;)
-		for ( uint i = 0; i < arraylen; i++ )
-			P[ i ].name += ( namesglob - name );
+	Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime );
+
+	for ( uint i = 0; i < arraylen; i++ )
+		P[ i ].name += ( namesglob - name );
 }
 
 void writesa( uint* salen, uint* suffixarray, char* filenameOut )
@@ -797,7 +888,7 @@ void writesa( uint* salen, uint* suffixarray, char* filenameOut )
         FILE* fp = fdopen(fd,"w");
         if (!fp)cout <<"fehler beim öffnen"<< endl;
         uint maxLen = 0;
-        for ( new_type i = 0;i < size;i++ ) if ( maxLen < saLenAll[ i ] )   maxLen = saLenAll[ i ];
+        for ( int i = 0;i < size;i++ ) if ( maxLen < saLenAll[ i ] )   maxLen = saLenAll[ i ];
 
         fwrite(&suffixarray[1],sizeof(uint),saLenAll[0]-1,fp); //abschneiden der 'null' am anfang
         cout << "Von 0 Daten geschrieben" << endl;
@@ -1256,15 +1347,15 @@ uint* sortS0S1S2( uint* inbuffer, Pair* recvBufPair, uint locArraylen, uint* n, 
 
 int main( int argc, char **argv )
 {
-    //MPI_Init
     MPI_Init( &argc, &argv );
+
     mpi_get_init();
 
     uint filelength;
 
     char* filename=NULL;
     if ( myproc == ROOT ) {
-        //Eingabe Datei
+        // Eingabe Datei
         if ( argc < 2 ) {
             cout << "Keine Eingabedatei! Aufruf z.B. mpdrun -np 4 ./dc INPUT SAMPLESIZE INPUTSIZE" << endl;
             return 0;
@@ -1273,13 +1364,15 @@ int main( int argc, char **argv )
         filename = argv[ 1 ];
         ifstream infile( filename );
         assert( infile );
-        //Groesse der Datei
+
+        // Groesse der Datei
         infile.seekg( 0L, ios::end );
         filelength = ( uint ) infile.tellg() + 1 ; // + 1 wegen Abschlusszeichen
         infile.seekg( 0L, ios::beg );
         infile.close();
         if (argc > 3 ) if (atoll(argv[3])< filelength && atoll(argv[3])>0) filelength= atoll(argv[3]);
     }
+
     MPI_Bcast( &filelength, 1, MPI_UNSIGNED, ROOT, MPI_COMM_WORLD );
 
     if ( argc > 2 )
@@ -1294,10 +1387,11 @@ int main( int argc, char **argv )
     if ( myproc == ROOT )
         cout << "Groesse der Datei ist " << filelength << " bytes " << (uint)(2*((double)filelength /3.0))<< " locArraylen " << locArraylen << endl;
 
+    // Verteilung der Daten nach inbuffer<- enthält lokal benötigte Zeichen +2 wegen Überschneidung und zum Erstellen der S0-S1 Tupel
 
-//Verteilung der Daten nach inbuffer<- enthält lokal benötigte Zeichen +2 wegen Überschneidung und zum Erstellen der S0-S1 Tupel
-    int overlap=2;
+    int overlap = 2;
     char* inbuffer = new char[ locArraylen + overlap ];
+
     if ( myproc == ROOT ) {
         ifstream infile( filename, ios::binary );
         infile.seekg( locArraylen + overlap, ios::beg );
@@ -1321,10 +1415,13 @@ int main( int argc, char **argv )
 //      cout << endl << " Einlesen von Daten ab Position " << 0L << endl;
         infile.read( inbuffer, locArraylen + overlap );
         infile.close();
-		Debug5(     cout<<"         min   -- max     -- Diff -- %-Diff -- %-Tuple -- merge-min--merge-max-- %-Diff alltoall-min alltoall-max"<<endl;)
-
-			} else  //not ROOT
+		Debug5(
+			cout << "         min   -- max     -- Diff -- %-Diff -- %-Tuple -- merge-min--merge-max-- %-Diff alltoall-min alltoall-max"<<endl
+			);
+	}
+	else { // not ROOT
         MPI_Recv( inbuffer, locArraylen + overlap, MPI_CHAR, ROOT, MSGTAG, MPI_COMM_WORLD, &status );
+	}
 
     uint* integerBuf = new uint[ locArraylen + overlap ];
     read( inbuffer, locArraylen + overlap, integerBuf );
@@ -1337,31 +1434,33 @@ int main( int argc, char **argv )
     uint salen;
     MPI_Barrier( MPI_COMM_WORLD );
 
-	Debug2( rekursionStart[countRek++]= MPI_Wtime();)
-		Debug1( dc3StartTime = MPI_Wtime();)
-        uint*   suffixarray = dc3( integerBuf, filelength, &salen );
-	Debug1( dc3FinishTime = MPI_Wtime() - dc3StartTime;)
-		Debug2( rekursionEnd[--countRek]=   MPI_Wtime() - rekursionStart[countRek];)
+	Debug2( rekursionStart[countRek++]= MPI_Wtime() );
+	Debug1( dc3StartTime = MPI_Wtime() );
 
-		Debug1( if ( myproc == ROOT ) cout << "Zeit für Erstellen von Suffixarry = "<<dc3FinishTime<<endl;) 
+	uint*   suffixarray = dc3( integerBuf, filelength, &salen );
 
-		Debug2(
-			if (myproc==ROOT) //Zeitmessung
-				MPI_Recv( name2tuple, 35, MPI_DOUBLE, size - 1, MSGTAG, MPI_COMM_WORLD, &status );
-			if (myproc==size-1) 
-				MPI_Send( name2tuple, 35, MPI_DOUBLE, 0, MSGTAG , MPI_COMM_WORLD );
-			int token = 0;
-			if ( myproc == ROOT ) {
-				cout << " CPU    Gesamtzeit    Sort    Merge     Permute   MPI_Alltoallv  MPI_Com   Rest   Zeit/Zeichen " << endl;
-				token = 1;
-			}
-			if ( !token ) 
-				MPI_Recv( &token, 1, MPI_INT, myproc - 1, MSGTAG, MPI_COMM_WORLD, &status );
-			writeTimes( filelength );
-			if ( myproc != size - 1 )
-				MPI_Send( &token, 1, MPI_INT, ( myproc + 1 ) % size, MSGTAG , MPI_COMM_WORLD );
-			)
-		if ( argc > 3 ) writesa( &salen, suffixarray, argv[ 3 ] );
+	Debug1( dc3FinishTime = MPI_Wtime() - dc3StartTime );
+	Debug2( rekursionEnd[--countRek]=   MPI_Wtime() - rekursionStart[countRek] );
+
+	Debug1( if ( myproc == ROOT ) cout << "Zeit für Erstellen von Suffixarry = "<<dc3FinishTime<<endl );
+
+	Debug2(
+		if (myproc==ROOT) //Zeitmessung
+			MPI_Recv( name2tuple, 35, MPI_DOUBLE, size - 1, MSGTAG, MPI_COMM_WORLD, &status );
+		if (myproc==size-1) 
+			MPI_Send( name2tuple, 35, MPI_DOUBLE, 0, MSGTAG , MPI_COMM_WORLD );
+		int token = 0;
+		if ( myproc == ROOT ) {
+			cout << " CPU    Gesamtzeit    Sort    Merge     Permute   MPI_Alltoallv  MPI_Com   Rest   Zeit/Zeichen " << endl;
+			token = 1;
+		}
+		if ( !token ) 
+			MPI_Recv( &token, 1, MPI_INT, myproc - 1, MSGTAG, MPI_COMM_WORLD, &status );
+		writeTimes( filelength );
+		if ( myproc != size - 1 )
+			MPI_Send( &token, 1, MPI_INT, ( myproc + 1 ) % size, MSGTAG , MPI_COMM_WORLD );
+		);
+	if ( argc > 3 ) writesa( &salen, suffixarray, argv[ 3 ] );
 
     MPI_Finalize();
     return 0;
