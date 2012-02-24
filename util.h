@@ -80,66 +80,66 @@ using namespace std;
 
 
 uchar* int2uchar(int number){
-	uchar* temp = new uchar[4];
-	for(int i=0;i<4;i++)
-		temp[i]=(uchar) ((number >> 8*i) & 0xFF);
+    uchar* temp = new uchar[4];
+    for(int i=0;i<4;i++)
+        temp[i]=(uchar) ((number >> 8*i) & 0xFF);
 
-/*	cout<<endl<<"Zahl "<<number<<" = ";
-	for(int i=0;i<4;i++)
-		cout<< (int)temp[i]<<" ";
-	cout<<endl; */
+/*  cout<<endl<<"Zahl "<<number<<" = ";
+    for(int i=0;i<4;i++)
+        cout<< (int)temp[i]<<" ";
+    cout<<endl; */
 
-	return temp;
+    return temp;
 }
 
 uint uchar2int(uchar* string){
-	uint temp=0;
-	for(int i=3;i>0;i--){
-		temp+=(uint)string[i];
-		temp<<=8;
-	}
-	temp+=(uint)string[0];
-	
-/*	cout<<endl<<"String ";
-	for(int i=0;i<4;i++)
-		cout<< (int)string[i]<<" ";
-	cout<<" = " <<temp<<endl;*/
+    uint temp=0;
+    for(int i=3;i>0;i--){
+        temp+=(uint)string[i];
+        temp<<=8;
+    }
+    temp+=(uint)string[0];
+    
+/*  cout<<endl<<"String ";
+    for(int i=0;i<4;i++)
+        cout<< (int)string[i]<<" ";
+    cout<<" = " <<temp<<endl;*/
 
-	return temp;
+    return temp;
 }
 
 void int2uchar(int number, uchar* temp){
-	for(int i=0;i<4;i++)
-		temp[i]=(uchar) ((number >> 8*i) & 0xFF);
+    for(int i=0;i<4;i++)
+        temp[i]=(uchar) ((number >> 8*i) & 0xFF);
 }
 
 void uchar2int(uchar* string, uint temp){
-	for(int i=3;i>0;i--){
-		temp+=(uint)string[i];
-		temp<<=8;
-	}
-	temp+=(uint)string[0];
+    for(int i=3;i>0;i--){
+        temp+=(uint)string[i];
+        temp<<=8;
+    }
+    temp+=(uint)string[0];
 }
 
 double pow( int a, int b ) {
-	double temp = 1;
-	if(b>=0){
-		for ( int i = 0; i < b ; i++ ) 
-			temp *= a;
-		return temp;
-	}else{
-		for ( int i = 0; i > b ; i-- ) 
-			temp /= a;
-		return temp;
-	}
+    double temp = 1;
+    if(b>=0){
+        for ( int i = 0; i < b ; i++ ) 
+            temp *= a;
+        return temp;
+    }else{
+        for ( int i = 0; i > b ; i-- ) 
+            temp /= a;
+        return temp;
+    }
 }
 
 void printBits(uint t){
-	for (int i=31 ; i>=0 ; i--){
-		if ( t & (uint)pow(2,i)) cout<<"1";
-		else cout<<"0";
-		if (i%4==0) cout<<".";
-	}
+    for (int i=31 ; i>=0 ; i--){
+        if ( t & (uint)pow(2,i)) cout<<"1";
+        else cout<<"0";
+        if (i%4==0) cout<<".";
+    }
 
 }
 
@@ -150,17 +150,17 @@ void printBits(uint t){
  * @return uint array
  */
 uint* read( char* inbuffer, int arraylen ){
-	uint * temp = new uint[ arraylen ];
-	for ( int i = 0; i < arraylen; i++ ) {
-		temp[ i ] = (unsigned char)inbuffer[ i ];
-	}
-	return temp;
+    uint * temp = new uint[ arraylen ];
+    for ( int i = 0; i < arraylen; i++ ) {
+        temp[ i ] = (unsigned char)inbuffer[ i ];
+    }
+    return temp;
 }
 
 void read( char* inbuffer, int arraylen, uint* temp){
-	for ( int i = 0; i < arraylen; i++ ) 
-		temp[ i ] = (unsigned char)inbuffer[ i ] + 1;
-	
+    for ( int i = 0; i < arraylen; i++ ) 
+        temp[ i ] = (unsigned char)inbuffer[ i ] + 1;
+    
 }
 
 #endif
