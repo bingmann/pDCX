@@ -266,9 +266,9 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
 		break;
     }
     if ( myproc == size - 1 ) {
-	n[ 0 ] = ( filelength + 2 ) / 3 - ( locArraylen * myproc + 2 ) / 3;
-	n[ 1 ] = ( filelength + 1 ) / 3 - ( locArraylen * myproc + 1 ) / 3;
-	n[ 2 ] = ( filelength + 0 ) / 3 - ( locArraylen * myproc + 0 ) / 3;
+		n[ 0 ] = ( filelength + 2 ) / 3 - ( locArraylen * myproc + 2 ) / 3;
+		n[ 1 ] = ( filelength + 1 ) / 3 - ( locArraylen * myproc + 1 ) / 3;
+		n[ 2 ] = ( filelength + 0 ) / 3 - ( locArraylen * myproc + 0 ) / 3;
     }
 
     uint n12 = n[ 1 ] + n[ 2 ];
@@ -276,23 +276,23 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
     Quadruple* sa12 = new Quadruple[ n12 ];
 
     {
-	uint j1 = 0,j2=n[1];
-	/** zwei recht ähnliche Schleifen, mit dem Unterschied, dass eine davon 1 mal länger laufen kann */
-	uint x1 = imod3[1], x2 =imod3[2];
-	while (j1<n[1] || j2<n12){
-	    if(j1<n[1]){// i mod 3 = 1
-		sa12[ j1 ].index = x1 + displacement;
-		sa12[ j1 ].name[ 0 ] = inbuffer[ x1++ ];
-		sa12[ j1 ].name[ 1 ] = inbuffer[ x1++ ];
-		sa12[ j1++ ].name[ 2 ] = inbuffer[ x1++ ];
-	    }
-	    if(j2<n12){// i mod 3 = 2
-		sa12[ j2 ].index = x2 + displacement;
-		sa12[ j2 ].name[ 0 ] = inbuffer[ x2++ ];
-		sa12[ j2 ].name[ 1 ] = inbuffer[ x2++ ];
-		sa12[ j2++ ].name[ 2 ] = inbuffer[ x2++ ];
-	    }
-	}
+		uint j1 = 0,j2=n[1];
+		/** zwei recht ähnliche Schleifen, mit dem Unterschied, dass eine davon 1 mal länger laufen kann */
+		uint x1 = imod3[1], x2 =imod3[2];
+		while (j1<n[1] || j2<n12){
+			if(j1<n[1]){// i mod 3 = 1
+				sa12[ j1 ].index = x1 + displacement;
+				sa12[ j1 ].name[ 0 ] = inbuffer[ x1++ ];
+				sa12[ j1 ].name[ 1 ] = inbuffer[ x1++ ];
+				sa12[ j1++ ].name[ 2 ] = inbuffer[ x1++ ];
+			}
+			if(j2<n12){// i mod 3 = 2
+				sa12[ j2 ].index = x2 + displacement;
+				sa12[ j2 ].name[ 0 ] = inbuffer[ x2++ ];
+				sa12[ j2 ].name[ 1 ] = inbuffer[ x2++ ];
+				sa12[ j2++ ].name[ 2 ] = inbuffer[ x2++ ];
+			}
+		}
     }
 
     /** Samplesort Quadruple start */
@@ -326,10 +326,10 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
 
     Quadruple* pivbuf= new Quadruple[ size ];
     if ( myproc == ROOT ) {
-	Switch0( sort( samplerecvbuf, samplerecvbuf + k * size ) );
+		Switch0( sort( samplerecvbuf, samplerecvbuf + k * size ) );
 		Switch1( stable_sort( samplerecvbuf, samplerecvbuf + k * size ) );
 		for ( int i = 0; i < size; i++ ) pivbuf[ i ] = samplerecvbuf[ i * k ];
-	delete[] samplerecvbuf;
+		delete[] samplerecvbuf;
     }
 
     /**Splitter verteilen*/
@@ -344,7 +344,7 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
 
     pivpos[0] = 0;
     for ( int i = 1; i < size; i++ )
-	pivpos[i] = findPos( sa12, pivbuf[i], n12, cmpSplitterGreaterS12 );
+		pivpos[i] = findPos( sa12, pivbuf[i], n12, cmpSplitterGreaterS12 );
     pivpos[ size ] = n12;
     delete[] pivbuf;
 
@@ -354,7 +354,7 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
     sendcnt = new int[ size ];
     recvcnt = new int[ size ];
     for ( int i = 0; i < size; i++ )
-	sendcnt[ i ] = pivpos[ i + 1 ] > pivpos[ i ] ? pivpos[ i + 1 ] - pivpos[ i ] : 0;
+		sendcnt[ i ] = pivpos[ i + 1 ] > pivpos[ i ] ? pivpos[ i + 1 ] - pivpos[ i ] : 0;
     delete[] pivpos;
 
 	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD));    mpiComStartTime = MPI_Wtime() );
@@ -370,15 +370,15 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
 
     sendoff[ 0 ] = recvoff[ 0 ] = 0;
     for ( int i = 1; i < size + 1; i++ ) {
-	sendoff[ i ] = sendoff[ i - 1 ] + sendcnt[ i - 1 ];
-	recvoff[ i ] = recvoff[ i - 1 ] + recvcnt[ i - 1 ];
+		sendoff[ i ] = sendoff[ i - 1 ] + sendcnt[ i - 1 ];
+		recvoff[ i ] = recvoff[ i - 1 ] + recvcnt[ i - 1 ];
     }
 
     Quadruple* recvbuf;
     if ( recvoff[ size ] )
-	recvbuf = new Quadruple[ recvoff[ size ] ];
+		recvbuf = new Quadruple[ recvoff[ size ] ];
     else
-	recvbuf = NULL;
+		recvbuf = NULL;
 
 	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD)); starttime = MPI_Wtime());
 
@@ -399,7 +399,7 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
 
     if ( recvoff[ size ] ) {
 		/** merge */
-	Quadruple * helparray4 = new Quadruple[ recvoff[ size ] ];
+		Quadruple * helparray4 = new Quadruple[ recvoff[ size ] ];
 		Debug2( starttime = MPI_Wtime() );
 
 		mergesort( recvbuf, helparray4, 0, size, recvoff, cmpSplitterLeqS12 );
@@ -434,16 +434,16 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
 					cout << (double)(max-min)/min*100<< setw( space )<<100*k/(2*locArraylen/3.0)<< setw( space )<< minMergeSA12<< setw( space )<<maxMergeSA12<<setw (space)<<(maxMergeSA12-minMergeSA12)/minMergeSA12*100 << setw( space )<<minAlltoallSA12<< setw( space )<< maxAlltoallSA12<<"  SA12"<<endl;}
 				);
 		}
-	delete[] helparray4;
+		delete[] helparray4;
 
 		/** Lexicographical naming   */
-	P = new Pair[ recvoff[ size ] ];
-	namelex( recvbuf, P, recvoff[ size ] ) ;
+		P = new Pair[ recvoff[ size ] ];
+		namelex( recvbuf, P, recvoff[ size ] ) ;
 
     }
 	else {
-	cout << myproc << " hat nichts bekommen" << endl;
-	P = NULL;
+		cout << myproc << " hat nichts bekommen" << endl;
+		P = NULL;
     }
 
 
@@ -578,7 +578,7 @@ uint* dc3( uint* inbuffer, uint filelength, uint* salen )
 		uint* sa12rec;
 		uint sa12len = 0;
 
-	// cerr<<myproc<<"alles ok"<<endl;
+		// cerr<<myproc<<"alles ok"<<endl;
 
 		Debug2( rekursionStart[countRek++]= MPI_Wtime() );
 
@@ -1079,15 +1079,15 @@ uint* sortS0S1S2( uint* inbuffer, Pair* recvBufPair, uint locArraylen, uint* n, 
     double d[3] = {( double ) n[ 0 ] / k,( double ) n[ 1] / k,( double ) n[ 2 ] / k};
 
     for ( uint i = 0; i < k; i++ ) {
-	samplebufS0[ i ] = S0[ int( i * d[0] ) ];
-	samplebufS0[i].index = samplebufS0[i].index/3;
-	samplebufS1[ i ].name[0] = S1[ int( i * d[1] ) ].name[0];
-	samplebufS1[ i ].name[1] = S1[ int( i * d[1] ) ].name[1];
-	samplebufS1[ i ].name[2] = S1[ int( i * d[1] ) ].name[2];
-	samplebufS1[i].index = (S1[i].index / 3) + MOD0;
-	//if(samplebufS1[i].index>MOD0+(locArraylen+1)/3)cout<<"Fehler samplebufS1[i].index>MOD0+n[i] "<< samplebufS1[i].index<<" "<< S1[i].index/3 <<" "<<MOD0<<" "<<(locArraylen+1)/3 <<endl;
-	samplebufS2[ i ] = S2[ int( i * d[2] ) ];
-	samplebufS2[i].index = samplebufS2[i].index/3+MOD1;
+		samplebufS0[ i ] = S0[ int( i * d[0] ) ];
+		samplebufS0[i].index = samplebufS0[i].index/3;
+		samplebufS1[ i ].name[0] = S1[ int( i * d[1] ) ].name[0];
+		samplebufS1[ i ].name[1] = S1[ int( i * d[1] ) ].name[1];
+		samplebufS1[ i ].name[2] = S1[ int( i * d[1] ) ].name[2];
+		samplebufS1[i].index = (S1[i].index / 3) + MOD0;
+		//if(samplebufS1[i].index>MOD0+(locArraylen+1)/3)cout<<"Fehler samplebufS1[i].index>MOD0+n[i] "<< samplebufS1[i].index<<" "<< S1[i].index/3 <<" "<<MOD0<<" "<<(locArraylen+1)/3 <<endl;
+		samplebufS2[ i ] = S2[ int( i * d[2] ) ];
+		samplebufS2[i].index = samplebufS2[i].index/3+MOD1;
     }
 
     /**Proc 0 sammelt Samples ein*/
@@ -1096,9 +1096,9 @@ uint* sortS0S1S2( uint* inbuffer, Pair* recvBufPair, uint locArraylen, uint* n, 
     Quintuple* samplerecvbufS2=NULL;
 
     if ( myproc == ROOT ) {
-	samplerecvbufS0 = new Quintuple[ k * size ];
-	samplerecvbufS1 = new Quintuple[ k * size +1];
-	samplerecvbufS2 = new Quintuple[ k * size +1];
+		samplerecvbufS0 = new Quintuple[ k * size ];
+		samplerecvbufS1 = new Quintuple[ k * size +1];
+		samplerecvbufS2 = new Quintuple[ k * size +1];
     }
 
 	Debug2(sampleStartTime=MPI_Wtime() );
@@ -1117,7 +1117,8 @@ uint* sortS0S1S2( uint* inbuffer, Pair* recvBufPair, uint locArraylen, uint* n, 
     Quintuple* pivbuf= new Quintuple[ size ];
 
     /**Proc 0 ermittelt Splitter*/
-    if (myproc==ROOT) {
+    if (myproc==ROOT)
+	{
 		Switch0(
 			sort( samplerecvbufS0, samplerecvbufS0 + k * size, cmpNameRank );
 			sort( samplerecvbufS1, samplerecvbufS1 + k * size, cmpFirstNameS2 );
@@ -1129,29 +1130,29 @@ uint* sortS0S1S2( uint* inbuffer, Pair* recvBufPair, uint locArraylen, uint* n, 
 			stable_sort( samplerecvbufS2, samplerecvbufS2 + k * size, cmpFirstNameS2 );
 			);
 		samplerecvbufS1[k*size].name[0]=MAX_INT;
-	samplerecvbufS1[k*size].name[1]=MAX_INT;
-	samplerecvbufS1[k*size].name[2]=MAX_INT;
-	samplerecvbufS1[k*size].name[3]=MAX_INT;
-	samplerecvbufS2[k*size].name[0]=MAX_INT_SAMPLE;
-	samplerecvbufS2[k*size].name[1]=MAX_INT_SAMPLE;
-	samplerecvbufS2[k*size].name[2]=MAX_INT_SAMPLE;
-	samplerecvbufS2[k*size].name[3]=MAX_INT_SAMPLE;
-	uint k3=3*k;
-	Quintuple* Samples= new Quintuple[k3*size+2];
+		samplerecvbufS1[k*size].name[1]=MAX_INT;
+		samplerecvbufS1[k*size].name[2]=MAX_INT;
+		samplerecvbufS1[k*size].name[3]=MAX_INT;
+		samplerecvbufS2[k*size].name[0]=MAX_INT_SAMPLE;
+		samplerecvbufS2[k*size].name[1]=MAX_INT_SAMPLE;
+		samplerecvbufS2[k*size].name[2]=MAX_INT_SAMPLE;
+		samplerecvbufS2[k*size].name[3]=MAX_INT_SAMPLE;
+		uint k3=3*k;
+		Quintuple* Samples= new Quintuple[k3*size+2];
 //cout<<myproc<<" 1006"<<endl;
-	merge2(samplerecvbufS0,samplerecvbufS1,samplerecvbufS2,Samples, k*size);
+		merge2(samplerecvbufS0,samplerecvbufS1,samplerecvbufS2,Samples, k*size);
 //      cout<<"samples"<<endl;
 //      for(int i =0;i<k3*size+2;i++) Samples[i].print();
 //cout<<myproc<<" 1008"<<endl;
-	delete[] samplerecvbufS0;
-	delete[] samplerecvbufS1;
-	delete[] samplerecvbufS2;
+		delete[] samplerecvbufS0;
+		delete[] samplerecvbufS1;
+		delete[] samplerecvbufS2;
 //      cout<<"pivbuf"<<endl;
-	for ( int i = 0; i < size; i++ ) {
-	    pivbuf[ i ] = Samples[ i * k3 ];
+		for ( int i = 0; i < size; i++ ) {
+			pivbuf[ i ] = Samples[ i * k3 ];
 //          pivbuf[ i ].print();
-	}
-	delete[] Samples;
+		}
+		delete[] Samples;
     }
 
     /**Splitter verteilen*/
@@ -1210,9 +1211,9 @@ uint* sortS0S1S2( uint* inbuffer, Pair* recvBufPair, uint locArraylen, uint* n, 
 
 
     for ( int i = 0; i < size; i++ ) {
-	sendcnt0[ i ] = pivpos0[ i + 1 ] > pivpos0[ i ] ? pivpos0[ i + 1 ] - pivpos0[ i ] : 0;
-	sendcnt1[ i ] = pivpos1[ i + 1 ] > pivpos1[ i ] ? pivpos1[ i + 1 ] - pivpos1[ i ] : 0;
-	sendcnt2[ i ] = pivpos2[ i + 1 ] > pivpos2[ i ] ? pivpos2[ i + 1 ] - pivpos2[ i ] : 0;
+		sendcnt0[ i ] = pivpos0[ i + 1 ] > pivpos0[ i ] ? pivpos0[ i + 1 ] - pivpos0[ i ] : 0;
+		sendcnt1[ i ] = pivpos1[ i + 1 ] > pivpos1[ i ] ? pivpos1[ i + 1 ] - pivpos1[ i ] : 0;
+		sendcnt2[ i ] = pivpos2[ i + 1 ] > pivpos2[ i ] ? pivpos2[ i + 1 ] - pivpos2[ i ] : 0;
     }
 
 	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime() );
@@ -1235,12 +1236,12 @@ uint* sortS0S1S2( uint* inbuffer, Pair* recvBufPair, uint locArraylen, uint* n, 
     sendoff2[ 0 ] = recvoff2[ 0 ] = 0;
 
     for ( int i = 1; i < size + 1; i++ ) {
-	sendoff0[ i ] = sendoff0[ i - 1 ] + sendcnt0[ i - 1 ];
-	sendoff1[ i ] = sendoff1[ i - 1 ] + sendcnt1[ i - 1 ];
-	sendoff2[ i ] = sendoff2[ i - 1 ] + sendcnt2[ i - 1 ];
-	recvoff0[ i ] = recvoff0[ i - 1 ] + recvcnt0[ i - 1 ];
-	recvoff1[ i ] = recvoff1[ i - 1 ] + recvcnt1[ i - 1 ];
-	recvoff2[ i ] = recvoff2[ i - 1 ] + recvcnt2[ i - 1 ];
+		sendoff0[ i ] = sendoff0[ i - 1 ] + sendcnt0[ i - 1 ];
+		sendoff1[ i ] = sendoff1[ i - 1 ] + sendcnt1[ i - 1 ];
+		sendoff2[ i ] = sendoff2[ i - 1 ] + sendcnt2[ i - 1 ];
+		recvoff0[ i ] = recvoff0[ i - 1 ] + recvcnt0[ i - 1 ];
+		recvoff1[ i ] = recvoff1[ i - 1 ] + recvcnt1[ i - 1 ];
+		recvoff2[ i ] = recvoff2[ i - 1 ] + recvcnt2[ i - 1 ];
     }
 
     n[ 0 ] = recvoff0[ size ];
