@@ -25,43 +25,43 @@ using namespace std;
 #if DEBUGLEVEL >= 0
 #define Debug0(A) A
 #else
-#define Debug0(A) 
+#define Debug0(A)
 #endif
 
 #if DEBUGLEVEL >= 1
 #define Debug1(A) A
 #else
-#define Debug1(A) 
+#define Debug1(A)
 #endif
 
 #if DEBUGLEVEL >= 2
 #define Debug2(A) A
 #else
-#define Debug2(A) 
+#define Debug2(A)
 #endif
 
 #if DEBUGLEVEL >= 3
 #define Debug3(A) A
 #else
-#define Debug3(A) 
+#define Debug3(A)
 #endif
 
 #if DEBUGLEVEL >= 4
 #define Debug4(A) A
 #else
-#define Debug4(A) 
+#define Debug4(A)
 #endif
 
 #if DEBUGLEVEL >= 5
 #define Debug5(A) A
 #else
-#define Debug5(A) 
+#define Debug5(A)
 #endif
 
 #if DEBUGLEVEL >= 6
 #define Debug6(A) A
 #else
-#define Debug6(A) 
+#define Debug6(A)
 #endif
 
 #define Assert(c) if(!(c))\
@@ -78,23 +78,23 @@ using namespace std;
 #if SORT == 0
 #define Switch0(A) A
 #else
-#define Switch0(A) 
+#define Switch0(A)
 #endif
 #if SORT == 1
 #define Switch1(A) A
 #else
-#define Switch1(A) 
+#define Switch1(A)
 #endif
 
 
 uchar* int2uchar(int number){
     uchar* temp = new uchar[4];
     for(int i=0;i<4;i++)
-        temp[i]=(uchar) ((number >> 8*i) & 0xFF);
+	temp[i]=(uchar) ((number >> 8*i) & 0xFF);
 
 /*  cout<<endl<<"Zahl "<<number<<" = ";
     for(int i=0;i<4;i++)
-        cout<< (int)temp[i]<<" ";
+	cout<< (int)temp[i]<<" ";
     cout<<endl; */
 
     return temp;
@@ -103,14 +103,14 @@ uchar* int2uchar(int number){
 uint uchar2int(uchar* string){
     uint temp=0;
     for(int i=3;i>0;i--){
-        temp+=(uint)string[i];
-        temp<<=8;
+	temp+=(uint)string[i];
+	temp<<=8;
     }
     temp+=(uint)string[0];
-    
+
 /*  cout<<endl<<"String ";
     for(int i=0;i<4;i++)
-        cout<< (int)string[i]<<" ";
+	cout<< (int)string[i]<<" ";
     cout<<" = " <<temp<<endl;*/
 
     return temp;
@@ -118,13 +118,13 @@ uint uchar2int(uchar* string){
 
 void int2uchar(int number, uchar* temp){
     for(int i=0;i<4;i++)
-        temp[i]=(uchar) ((number >> 8*i) & 0xFF);
+	temp[i]=(uchar) ((number >> 8*i) & 0xFF);
 }
 
 void uchar2int(uchar* string, uint temp){
     for(int i=3;i>0;i--){
-        temp+=(uint)string[i];
-        temp<<=8;
+	temp+=(uint)string[i];
+	temp<<=8;
     }
     temp+=(uint)string[0];
 }
@@ -132,21 +132,21 @@ void uchar2int(uchar* string, uint temp){
 double pow( int a, int b ) {
     double temp = 1;
     if(b>=0){
-        for ( int i = 0; i < b ; i++ ) 
-            temp *= a;
-        return temp;
+	for ( int i = 0; i < b ; i++ )
+	    temp *= a;
+	return temp;
     }else{
-        for ( int i = 0; i > b ; i-- ) 
-            temp /= a;
-        return temp;
+	for ( int i = 0; i > b ; i-- )
+	    temp /= a;
+	return temp;
     }
 }
 
 void printBits(uint t){
     for (int i=31 ; i>=0 ; i--){
-        if ( t & (uint)pow(2,i)) cout<<"1";
-        else cout<<"0";
-        if (i%4==0) cout<<".";
+	if ( t & (uint)pow(2,i)) cout<<"1";
+	else cout<<"0";
+	if (i%4==0) cout<<".";
     }
 
 }
@@ -160,15 +160,15 @@ void printBits(uint t){
 uint* read( char* inbuffer, int arraylen ){
     uint * temp = new uint[ arraylen ];
     for ( int i = 0; i < arraylen; i++ ) {
-        temp[ i ] = (unsigned char)inbuffer[ i ];
+	temp[ i ] = (unsigned char)inbuffer[ i ];
     }
     return temp;
 }
 
 void read( char* inbuffer, int arraylen, uint* temp){
-    for ( int i = 0; i < arraylen; i++ ) 
-        temp[ i ] = (unsigned char)inbuffer[ i ] + 1;
-    
+    for ( int i = 0; i < arraylen; i++ )
+	temp[ i ] = (unsigned char)inbuffer[ i ] + 1;
+
 }
 
 #endif
