@@ -3,97 +3,56 @@
 #include "tuple.h"
 #include <cassert>
 
-using namespace std;
-
 typedef unsigned char uchar;
 
 #define MOD0 ~0U/3
 #define MOD1 2*(~0U/3)
 #define SPACE 12 
 
-/** Pair */
-bool Pair::less ( const Pair& a ) const {
-    return * this < a;
-}
-bool Pair::operator< ( const Pair& a ) const {
-    return this->index < a.index;
-    //return (this->index%3 < a.index%3) || ((this->index%3 == a.index%3) &&     (this->index/3 < a.index/3));
-}
-void Pair::print() const {
-    cout << this->name << " " << this->index << " ||";
-}
-
-/**
- * splitter '% /' 3 < P '%/' 3  
- */
-bool cmpIndexModDiv( const Pair& splitter, const Pair& P ) {
-    return ( splitter.index % 3 < P.index % 3 ) ||
-           ( ( splitter.index % 3 == P.index % 3 ) && ( splitter.index / 3 < P.index / 3 ) );
-}
-bool cmpGreaterIndex( const Pair& a, const Pair& b ) {
-    return ( a.index > b.index );
-}
-bool cmpLessIndex( const Pair& a, const Pair& b ) {
-    return ( a.index < b.index );
-}
-bool cmpLeqIndex( const Pair& a, const Pair& b ) {
-    return ( a.index < b.index );
-}
-bool cmpSplitterPair( const uint& a, const Pair& b ) {
-    return ( a < b.index );
-}
-
-/** Triple */
-bool Triple::less ( const Triple& a ) const {
-    return * this < a;
-}
-bool Triple::operator< ( const Triple& a ) const {
-    return this->name[ 0 ] < a.name[ 0 ];
-    //return (this->index%3 < a.index%3) || ((this->index%3 == a.index%3) &&     (this->index/3 < a.index/3));
-}
-void Triple::print() const {
-    cout << this->name[0] << " " << this->name[1] << " " << this->index << " ||";
-}
-
-
 /** Quadruple */
 //bool Quadruple::less ( const Quadruple& a ) const { return * this < a; }
 bool Quadruple::operator< ( const Quadruple& a ) const {
-    if ( this->name[ 0 ] < a.name[ 0 ] )
+    if ( name[ 0 ] < a.name[ 0 ] )
         return true;
-    else if ( this->name[ 0 ] == a.name[ 0 ] )
-        if ( this->name[ 1 ] < a.name[ 1 ] )
+    else if ( name[ 0 ] == a.name[ 0 ] ) {
+        if ( name[ 1 ] < a.name[ 1 ] )
             return true;
-        else if ( this->name[ 1 ] == a.name[ 1 ] )
-            if ( this->name[ 2 ] < a.name[ 2 ] )
+        else if ( name[ 1 ] == a.name[ 1 ] ) {
+            if ( name[ 2 ] < a.name[ 2 ] )
                 return true;
-            else if ( this->name[ 2 ] == a.name[ 2 ] )
-                if ( this->index < a.index )
+            else if ( name[ 2 ] == a.name[ 2 ] ) {
+                if ( index < a.index )
                     return true;
+			}
+		}
+	}
     return false;
 }
 bool Quadruple::operator> ( const Quadruple& a ) const {
-    if ( this->name[ 0 ] > a.name[ 0 ] )
+    if ( name[ 0 ] > a.name[ 0 ] )
         return true;
-    else if ( this->name[ 0 ] == a.name[ 0 ] )
-        if ( this->name[ 1 ] > a.name[ 1 ] )
+    else if ( name[ 0 ] == a.name[ 0 ] ) {
+        if ( name[ 1 ] > a.name[ 1 ] )
             return true;
-        else if ( this->name[ 1 ] == a.name[ 1 ] )
-            if ( this->name[ 2 ] > a.name[ 2 ] )
+        else if ( name[ 1 ] == a.name[ 1 ] ) {
+            if ( name[ 2 ] > a.name[ 2 ] )
                 return true;
-            else if ( this->name[ 2 ] == a.name[ 2 ] )
-                if ( this->index > a.index )
+            else if ( name[ 2 ] == a.name[ 2 ] ) {
+                if ( index > a.index )
                     return true;
+			}
+		}
+	}
     return false;
 }
 
-// bool Quadruple::equal ( const Quadruple& a ) const { return this->index == a.index; }
+// bool Quadruple::equal ( const Quadruple& a ) const { return index == a.index; }
 bool Quadruple::operator== ( const Quadruple& a ) const {
-    if ( this->name[ 0 ] != a.name[ 0 ] )
+    if ( name[ 0 ] != a.name[ 0 ] )
         return false;
-    else if ( this->name[ 1 ] != a.name[ 1 ] )
+    else if ( name[ 1 ] != a.name[ 1 ] )
         return false;
-    else if ( this->name[ 2 ] != a.name[ 2 ] )
+    else if ( name[ 2 ] != a.name[ 2 ] )
         return false;
     return true;
 }
@@ -107,47 +66,47 @@ bool Quadruple::operator<= ( const Quadruple& a ) const {
 
 void Quadruple::print() const {
     for ( int i = 0;i < 3;i++ )
-        cout << this->name[ i ] << " ";
-    cout << this->index << endl;
+        std::cout << name[ i ] << " ";
+    std::cout << index << std::endl;
 }
 void Quadruple::printchar() const {
-    cout << ( char ) this->name[ 0 ] << ( char ) this->name[ 1 ] << ( char ) this->name[ 2 ] << " " << this->index << endl;
+    std::cout << ( char ) name[ 0 ] << ( char ) name[ 1 ] << ( char ) name[ 2 ] << " " << index << std::endl;
 }
 void Quadruple::printcharS1() const {
-    cout << this->name[ 0 ] << " " << ( char ) this->name[ 1 ] << " " << this->name[ 2 ] << " " << this->index << endl;
+    std::cout << name[ 0 ] << " " << ( char ) name[ 1 ] << " " << name[ 2 ] << " " << index << std::endl;
 }
 
 
 /** Quintuple */
 void Quintuple::print() const {
     for ( int i = 0;i < 4;i++ )
-        cout << this->name[ i ] << " ";
-    cout << this->index << endl;
+        std::cout << name[ i ] << " ";
+    std::cout << index << std::endl;
 }
 
 void Quintuple::printcharS0() const {
-    cout << ( char ) this->name[ 0 ] << " " << ( char ) this->name[ 1 ] << " " << this->name[ 2 ] << " " << this->name[ 3 ] << " " << this->index << endl;
+    std::cout << ( char ) name[ 0 ] << " " << ( char ) name[ 1 ] << " " << name[ 2 ] << " " << name[ 3 ] << " " << index << std::endl;
 }
 
 void Quintuple::printcharS2() const {
-    cout << this->name[ 0 ] << " " << ( char ) this->name[ 1 ] << " " << ( char ) this->name[ 2 ] << " " << this->name[ 3 ] << " " << this->index << endl;
+    std::cout << name[ 0 ] << " " << ( char ) name[ 1 ] << " " << ( char ) name[ 2 ] << " " << name[ 3 ] << " " << index << std::endl;
 }
 
 void Quintuple::printS() const {
-	if(this->index<MOD0)    this->printS0();
-	else if(this->index<MOD1)   this->printS1();
-	else this->printS2();
+	if(index<MOD0)    printS0();
+	else if(index<MOD1)   printS1();
+	else printS2();
         
 }
 
 void Quintuple::printS0() const {
-    cout << setw( SPACE )<< this->name[ 0 ] << setw( SPACE ) << this->name[ 1 ] << setw( SPACE ) << this->name[ 2 ] << setw( SPACE ) << this->index <<" 0"<< endl;
+    std::cout << std::setw( SPACE )<< name[ 0 ] << std::setw( SPACE ) << name[ 1 ] << std::setw( SPACE ) << name[ 2 ] << std::setw( SPACE ) << index <<" 0"<< std::endl;
 }
 void Quintuple::printS1() const {
-    cout << setw( SPACE )<< this->name[ 1 ] << setw( SPACE )<<" "<< setw( SPACE ) << this->name[ 0 ] << setw( SPACE ) << this->index <<" 1"<< endl;
+    std::cout << std::setw( SPACE )<< name[ 1 ] << std::setw( SPACE )<<" "<< std::setw( SPACE ) << name[ 0 ] << std::setw( SPACE ) << index <<" 1"<< std::endl;
 }
 void Quintuple::printS2() const {
-    cout << setw( SPACE )<< this->name[ 1 ] << setw( SPACE )<< this->name[ 2 ] << setw( SPACE )<< this->name[ 0 ] << setw( SPACE )<< this->index <<" 2"<< endl;
+    std::cout << std::setw( SPACE )<< name[ 1 ] << std::setw( SPACE )<< name[ 2 ] << std::setw( SPACE )<< name[ 0 ] << std::setw( SPACE )<< index <<" 2"<< std::endl;
 }
 
 
@@ -155,16 +114,16 @@ bool Quintuple::less ( const Quintuple& a ) const {
     return * this < a;
 }
 bool Quintuple::operator< ( const Quintuple& a ) const {
-    return ( this->name[ 0 ] < a.name[ 0 ] ||
-             ( ( this->name[ 0 ] == a.name[ 0 ] ) && ( this->name[ 2 ] < a.name[ 2 ] ) ) );
+    return ( name[ 0 ] < a.name[ 0 ] ||
+             ( ( name[ 0 ] == a.name[ 0 ] ) && ( name[ 2 ] < a.name[ 2 ] ) ) );
 }
 
 bool Quintuple::equal ( const Quintuple& a ) const {
-    return this->index == a.index;
+    return index == a.index;
 }
 bool Quintuple::operator== ( const Quintuple& a ) const {
-    return this->index == a.index;
-    //  return (( this->name[ 0 ] == a.name[ 0 ] ) && ( this->name[ 2 ] == a.name[ 2 ] ));
+    return index == a.index;
+    //  return (( name[ 0 ] == a.name[ 0 ] ) && ( name[ 2 ] == a.name[ 2 ] ));
 }
 bool Quintuple::operator<= ( const Quintuple& a ) const {
     if ( *this < a )
@@ -189,7 +148,7 @@ void merge( Quintuple* S0, Quadruple* S1, Quintuple* S2, uint* SA, uint* n )
 {
     uint x0 = 0, x1 = 0, x2 = 0;
     uint nsa = 0;
-    //  cout<<"x0:"<<x0<<" n0:"<<n[0]<<endl;
+    //  std::cout<<"x0:"<<x0<<" n0:"<<n[0]<<std::endl;
     while ( x0 != n[ 0 ] ) {
         /*  S0[x0].print();
             S1[x1].print();
@@ -204,22 +163,22 @@ void merge( Quintuple* S0, Quadruple* S1, Quintuple* S2, uint* SA, uint* n )
             SA[ nsa++ ] = S1[ x1++ ].index; // S1 < S0 und S1 < S2
         else
             SA[ nsa++ ] = S2[ x2++ ].index;                                                             // S2 < S1 < S0
-        //      cout<<"SA["<<nsa-1<<"]="<<SA[nsa-1 ]<<endl;
+        //      std::cout<<"SA["<<nsa-1<<"]="<<SA[nsa-1 ]<<std::endl;
         assert( x1 <= n[ 1 ] && x2 <= n[ 2 ] );
     }
-    //  cout<<"x1:"<<x1<<" n1:"<<n[1]<<endl;
+    //  std::cout<<"x1:"<<x1<<" n1:"<<n[1]<<std::endl;
     while ( x1 != n[ 1 ] ) { //sind noch S1-Tuple übrig
         if ( S1[ x1 ].name[ 0 ] < S2[ x2 ].name[ 0 ] )
             SA[ nsa++ ] = S1[ x1++ ].index;
         else
             SA[ nsa++ ] = S2[ x2++ ].index;
-        //      cout<<"SA["<<nsa-1<<"]="<<SA[nsa-1 ]<<endl;
+        //      std::cout<<"SA["<<nsa-1<<"]="<<SA[nsa-1 ]<<std::endl;
         assert( x2 <= n[ 2 ] );
     }
-    //  cout<<"x2:"<<x2<<" n2:"<<n[2]<<endl;
+    //  std::cout<<"x2:"<<x2<<" n2:"<<n[2]<<std::endl;
     while ( x2 != n[ 2 ] ) { //sind noch S2-Tuple übrig
         SA[ nsa++ ] = S2[ x2++ ].index;
-        //      cout<<"SA["<<nsa-1<<"]="<<SA[nsa-1 ]<<endl;
+        //      std::cout<<"SA["<<nsa-1<<"]="<<SA[nsa-1 ]<<std::endl;
     }
 }
 
@@ -238,7 +197,7 @@ void findPosPair( Pair* P, uint splitter, uint& start, uint size, uint names ) {
 
     while ( start < end && splitter > ( P[ start ].index % 3 - 1 ) * ( names / 2 ) + P[ start ].index / 3 )
         ++start;
-    //  cerr<<"start "<<start<< " size "<<end<<endl;
+    //  cerr<<"start "<<start<< " size "<<end<<std::endl;
     //start=(start>end)?end:start;
 }
 
@@ -268,13 +227,13 @@ uint findPosSA( uint* array, uint splitter, uint size, int* sendcnt ) {
 uint findPosSATest( uint* array, uint splitter, uint size, int* sendcnt ) {
     uint left = 0, end = size, done = 0 ;
     uint middle = ( left + size / 2 ); //>=end? end-1 :(left + size/2);
-    //  cout<<"splitter "<<splitter<<" array[middle] "<<array[middle]<<endl;
+    //  std::cout<<"splitter "<<splitter<<" array[middle] "<<array[middle]<<std::endl;
     while ( !done && size > 0 ) {
         if ( splitter == array[ middle ] ) {
             done = 1;
             middle++;
         } else {
-            //          cout<<" array[middle] "<<array[middle]<<" middle "<<middle<<endl;
+            //          std::cout<<" array[middle] "<<array[middle]<<" middle "<<middle<<std::endl;
             if ( splitter > array[ middle ] )
                 left = middle + 1;
             size /= 2;
@@ -283,10 +242,10 @@ uint findPosSATest( uint* array, uint splitter, uint size, int* sendcnt ) {
     }
     while ( !done && middle < end && ( splitter > array[ middle ] ) )
         ++middle;
-    //  cout<<" array[middle] "<<array[middle]<<" middle nach while "<<middle<<endl;
+    //  std::cout<<" array[middle] "<<array[middle]<<" middle nach while "<<middle<<std::endl;
 
     middle = ( middle ) % end;
-    //  cout<<" array[middle] "<<array[middle]<<" middle%end "<<middle<<endl;
+    //  std::cout<<" array[middle] "<<array[middle]<<" middle%end "<<middle<<std::endl;
 
     sendcnt[ middle ] ++;
     return middle;
@@ -296,13 +255,13 @@ uint findPosSATest2( uint* array, uint splitter, uint size, int* sendcnt ) {
     uint left = 0, end = size, done = 0 ;
     size *= 2;
     uint middle = ( left + size / 2 ); //>=2*end? 2*end-1 :(left + size/2);
-    cout << "splitter " << splitter << " array[middle] " << array[ middle ] << endl;
+    std::cout << "splitter " << splitter << " array[middle] " << array[ middle ] << std::endl;
     while ( !done && size > 0 ) {
         if ( splitter == array[ middle ] ) {
             done = 1;
             middle++;
         } else {
-            cout << " array[middle] " << array[ middle ] << " middle " << middle << endl;
+            std::cout << " array[middle] " << array[ middle ] << " middle " << middle << std::endl;
             if ( splitter > array[ middle ] )
                 left = middle + 1;
             size /= 2;
@@ -311,10 +270,10 @@ uint findPosSATest2( uint* array, uint splitter, uint size, int* sendcnt ) {
     }
     while ( !done && middle < 2 * end && ( splitter > array[ middle ] ) )
         ++middle;
-    cout << " array[middle] " << array[ middle ] << " middle nach while " << middle << endl;
+    std::cout << " array[middle] " << array[ middle ] << " middle nach while " << middle << std::endl;
 
     middle = ( middle ) % end;
-    cout << " array[middle] " << array[ middle ] << " middle%end " << middle << endl;
+    std::cout << " array[middle] " << array[ middle ] << " middle%end " << middle << std::endl;
 
     sendcnt[ middle ] ++;
     return middle;
@@ -442,17 +401,17 @@ void merge( Quintuple* S, Quintuple* helparray, uint n0Len, uint size )
                 helparray[ index++ ] = S[ x0++ ];
             else
                 helparray[ index++ ] = S[ x1++ ];
-//          cout<<" x0 "<<x0<<" x1 "<<x1<<" n0Len-"<<n0Len<<endl;
+//          std::cout<<" x0 "<<x0<<" x1 "<<x1<<" n0Len-"<<n0Len<<std::endl;
 
     }
     while ( x0 < n0Len) {
         helparray[ index++ ] = S[ x0++ ];
-//          cout<<" x0 "<<x0<<" x1 "<<x1<<" n0Len-"<<n0Len<<endl;
+//          std::cout<<" x0 "<<x0<<" x1 "<<x1<<" n0Len-"<<n0Len<<std::endl;
     }
 
     while ( x1 < size ) {
         helparray[ index++ ] = S[ x1++ ];
-//          cout<<" x0 "<<x0<<" x1 "<<x1<<" n0Len-"<<n0Len<<endl;
+//          std::cout<<" x0 "<<x0<<" x1 "<<x1<<" n0Len-"<<n0Len<<std::endl;
     }
 }
 
@@ -462,9 +421,9 @@ uint findRecvCPU_S0( Quintuple* splitter, Quintuple element, uint size, int* sen
     uint left = 0, end = size, done = 0 ;
     uint middle = ( left + size / 2 );
     while ( !done && size > 0 ) {
-/*      cout<<"element "<<element<<" splitter[middle] "<<splitter[middle]<<" size "<<size <<endl;*/
-//  cout <<"element ";  element.print();
-//  cout <<" + splitter "; splitter[middle].print();
+/*      std::cout<<"element "<<element<<" splitter[middle] "<<splitter[middle]<<" size "<<size <<std::endl;*/
+//  std::cout <<"element ";  element.print();
+//  std::cout <<" + splitter "; splitter[middle].print();
 
         if ( element.index == splitter[ middle ].index ) {
             done = 1;
@@ -481,7 +440,7 @@ uint findRecvCPU_S0( Quintuple* splitter, Quintuple element, uint size, int* sen
             middle = ( left + size / 2 ) >= end ? end - 1 : ( left + size / 2 );
         }
     }
-//  cout<<"middle "<<middle<<" end "<<end<<endl;
+//  std::cout<<"middle "<<middle<<" end "<<end<<std::endl;
     assert (middle<end);
     
     while ( !done && middle < end-1 ) {
@@ -496,12 +455,12 @@ uint findRecvCPU_S0( Quintuple* splitter, Quintuple element, uint size, int* sen
             else done=1;
         }
     }
-    //  cout<<" array[middle] "<<array[middle]<<" middle nach while "<<middle<<endl;
+    //  std::cout<<" array[middle] "<<array[middle]<<" middle nach while "<<middle<<std::endl;
 
     //  middle=(middle)%end;
-//  cout <<"Eingabe ";  element.print();
-//  cout <<"splitter "; splitter[middle].print();
-//  cout<<"element "<<element.index<<" array[middle] "<<splitter[middle].index<<" middle "<<middle<<" "<<end<<endl;
+//  std::cout <<"Eingabe ";  element.print();
+//  std::cout <<"splitter "; splitter[middle].print();
+//  std::cout<<"element "<<element.index<<" array[middle] "<<splitter[middle].index<<" middle "<<middle<<" "<<end<<std::endl;
     assert (middle<end);
     sendcnt[ middle ] ++;
     return middle;
@@ -511,7 +470,7 @@ uint findRecvCPU_S1( Quintuple* splitter, Quintuple element, uint size, int* sen
 {
     uint left = 0, end = size, done = 0 ;
     uint middle = ( left + size / 2 );
-    //  cout<<"splitter "<<splitter<<" array[middle] "<<array[middle]<<endl;
+    //  std::cout<<"splitter "<<splitter<<" array[middle] "<<array[middle]<<std::endl;
     while ( !done && size > 0 ) {
         if ( element.index == splitter[ middle ].index ) {
             done = 1;
@@ -522,7 +481,7 @@ uint findRecvCPU_S1( Quintuple* splitter, Quintuple element, uint size, int* sen
             } else                                                          //mod12-splitter
                 if ( element.cmpS1GreaterMod12( splitter[ middle ] ) )              left = middle + 1;
 
-            //          cout<<" array[middle] "<<array[middle]<<" middle "<<middle<<endl;
+            //          std::cout<<" array[middle] "<<array[middle]<<" middle "<<middle<<std::endl;
             size /= 2;
             middle = ( left + size / 2 ) >= end ? end - 1 : ( left + size / 2 );
         }
@@ -562,9 +521,9 @@ uint findRecvCPU_S2( Quintuple* splitter, Quintuple element, uint size, int* sen
         }
     }
 
-//  cout <<"VOR 2. WHILE element "; element.print();
-//  cout <<" + splitter "; splitter[middle].print();
-//  cout<<"element "<<element.index<<" array[middle] "<<splitter[middle].index<<" middle "<<middle<<" "<<end<<endl;
+//  std::cout <<"VOR 2. WHILE element "; element.print();
+//  std::cout <<" + splitter "; splitter[middle].print();
+//  std::cout<<"element "<<element.index<<" array[middle] "<<splitter[middle].index<<" middle "<<middle<<" "<<end<<std::endl;
 
     while ( !done && middle < end -1) {
         if ( splitter[ middle ].index < MOD0 ) {                //mod0-splitter
@@ -575,9 +534,9 @@ uint findRecvCPU_S2( Quintuple* splitter, Quintuple element, uint size, int* sen
             else done=1;
         }
     }
-/*  cout <<"NACH 2. WHILE element ";    element.print();
-    cout <<" + splitter "; splitter[middle].print();
-    cout<<"element "<<element.index<<" array[middle] "<<splitter[middle].index<<" middle "<<middle<<" "<<end<<endl;*/
+/*  std::cout <<"NACH 2. WHILE element ";    element.print();
+    std::cout <<" + splitter "; splitter[middle].print();
+    std::cout<<"element "<<element.index<<" array[middle] "<<splitter[middle].index<<" middle "<<middle<<" "<<end<<std::endl;*/
     assert (middle<end);
     sendcnt[ middle ] ++;
     return middle;
@@ -597,20 +556,20 @@ void sort( Quintuple* S, Quintuple* out, Quintuple* pivbuf, uint* pivpos, int* s
         positions[ i ] = ( uchar ) findRecvCPU_S1( pivbuf, S[ i ], size, sendcnt );
     for ( ; i < n[ 0 ] + n[ 1 ] + n[ 2 ] ; i++ )    //finde Empfänger von mod2
         positions[ i ] = ( uchar ) findRecvCPU_S2( pivbuf, S[ i ], size, sendcnt );
-//  cout <<" sendcnt ";
-//  for (int i=0 ; i<size ; i++)cout<<sendcnt[i]<<" ";
-//  cout << endl;
+//  std::cout <<" sendcnt ";
+//  for (int i=0 ; i<size ; i++)std::cout<<sendcnt[i]<<" ";
+//  std::cout << std::endl;
     pivpos[ 0 ] = 0;
     uint counter[ size ];
     for ( i = 0 ; i < size ; i++ ) {
         pivpos[ i + 1 ] = pivpos[ i ] + sendcnt[ i ];
         counter[ i ] = 0;
-//      cout<<pivpos[i+1];
+//      std::cout<<pivpos[i+1];
     }
 
-//  cout <<"alles ok  -------------------------------------------------- "<< endl;
+//  std::cout <<"alles ok  -------------------------------------------------- "<< std::endl;
     for ( i = 0 ; i < n[ 0 ] + n[ 1 ] + n[ 2 ] ; i++ ){
-//      cout << pivpos[ positions[ i ] ] <<" "<< counter[ positions[ i ]]<<" "<<size<< endl;
+//      std::cout << pivpos[ positions[ i ] ] <<" "<< counter[ positions[ i ]]<<" "<<size<< std::endl;
         out[ pivpos[ positions[ i ] ] + counter[ positions[ i ] ] ++ ] = S[ i ];
     }
     delete[] positions;
