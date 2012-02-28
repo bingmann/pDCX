@@ -315,6 +315,11 @@ bool cmpS0GreaterS2( const Quintuple& S0, const Quintuple& S2 ) {
 	     ( ( S0.name[ 1 ] > S2.name[ 2 ] ) || ( ( S0.name[ 1 ] == S2.name[ 2 ] ) && ( S0.name[ 3 ] > S2.name[ 3 ] ) ) ) );
 }
 
+template <int X>
+bool cmpSplitterLeqS12( const TupleA<X>& splitter, const TupleA<X>& S12 ) {
+    return ( splitter == S12 || splitter < S12 );
+}
+
 /** mergesort */
 bool cmpSplitterLeqS12( const Quadruple& splitter, const Quadruple& S12 ) {
     return ( splitter == S12 || splitter < S12 );
