@@ -15,8 +15,6 @@
 typedef unsigned char uchar;
 typedef unsigned int uint;
 
-using namespace std;
-
 // default debug level. will be overidden e.g. if debug.h is included
 #ifndef DEBUGLEVEL
 #define DEBUGLEVEL 3
@@ -144,9 +142,9 @@ double pow( int a, int b ) {
 
 void printBits(uint t){
     for (int i=31 ; i>=0 ; i--){
-	if ( t & (uint)pow(2,i)) cout<<"1";
-	else cout<<"0";
-	if (i%4==0) cout<<".";
+	if ( t & (uint)pow(2,i)) std::cout<<"1";
+	else std::cout<<"0";
+	if (i%4==0) std::cout<<".";
     }
 
 }

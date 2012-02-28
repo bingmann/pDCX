@@ -1,4 +1,5 @@
 #include <cassert>
+#include <sstream>
 
 #define MOD0 ~0U/3
 #define MOD1 2*(~0U/3)
@@ -15,7 +16,6 @@ public:
 	}
 	bool operator< ( const Pair& a ) const {
 		return index < a.index;
-		//return (index%3 < a.index%3) || ((index%3 == a.index%3) &&     (index/3 < a.index/3));
 	}
 	void print() const {
 		std::cout << name << " " << index << " ||";
@@ -63,6 +63,48 @@ public:
 		std::cout << name[0] << " " << name[1] << " " << index << " ||";
 	}
 };
+
+template <int X>
+class TupleA
+{
+public:
+    uint	chars[X];
+    uint	index;
+
+    bool operator< (const TupleA& o) const
+    {
+	for (unsigned int i = 0; i < X; ++i)
+	{
+	    if (chars[i] == o.chars[i]) continue;
+	    return chars[i] < o.chars[i];
+	}
+	return false;
+    }
+
+    bool operator== (const TupleA& o) const
+    {
+	for (unsigned int i = 0; i < X; ++i)
+	{
+	    if (chars[i] != o.chars[i]) return false;
+	}
+	return true;
+    }
+
+    std::string str() const {
+	std::ostringstream os;
+	os << "([";
+	for (unsigned int i = 0; i < X; ++i)
+	    os << chars[i] << " ";
+	os << "]," << index << ")";
+	return os.str();
+    }
+
+} __attribute__((packed));
+
+template <int X>
+bool cmpTupleXLeq( const TupleA<X>& a, const TupleA<X>& b ) {
+    return ( a == b || a < b );
+}
 
 class Quadruple {
 public:
