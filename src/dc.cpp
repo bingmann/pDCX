@@ -39,6 +39,8 @@ static const bool debug = true;
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <stdlib.h>
+#include <limits.h>
+#include <inttypes.h>
 
 #include "tuple.h"
 
@@ -50,18 +52,11 @@ static const bool debug = true;
 #include <limits>
 
 #include "yuta-sais-lite.h"
+#include "sachecker.h"
 
 typedef unsigned int	uint;
 
-//#define MAX_INT ~1U
-#define MAX_INT 	4294000001 
-
-#define MAX_INT_SAMPLE ~0U
-//#define MOD2_INDEX ~1UL // ~1UL % 3 = 4294967294 % 3 = 2  max mod 2 Index for UNSIGNED INTEGER
-#define MIN_INT 0UL
 #define MSGTAG 42
-#define MOD0 ~0U/3
-#define MOD1 2*(~0U/3)
 
 typedef TupleA<X>	TupleX;
 
@@ -129,26 +124,6 @@ void sortPair( Pair* in, Pair* out, uint length, uint* n12all, uint half )
 		out[ in[ i ].index - n12all[ myproc - 1 ] ] = in[ i ];
 	    }
 	}
-}
-
-/**
- *
- * @param in
- * @param out
- * @param length
- * @param n12all
- * @param names
- */
-void sortPairIndex( Pair* in, Pair* out, uint length, uint* n12all ,uint names)
-{
-	if (myproc==0)
-		for ( uint i = 0 ; i < length; i++ )
-			out[( in[ i ].index % 3 - 1 ) * ( names / 2 ) + in[ i ].index / 3 ]=in[i];
-	else
-		for ( uint i = 0 ; i < length; i++ ) {
-			out[( in[ i ].index % 3 - 1 ) * ( names / 2 ) + in[ i ].index / 3 - n12all[myproc-1]]=in[i];
-		}
-
 }
 
 MPI_Datatype MPI_TUPLEX;
@@ -330,27 +305,69 @@ public:
 
 static const int cmpDepth[X][X] = 
 {
-    { -1,  0,  1,  0,  3,  3,  1 },
-    { -1, -1,  6,  0,  6,  2,  2 },
-    { -1, -1, -1,  5,  6,  5,  1 },
-    { -1, -1, -1, -1,  4,  5,  4 },
-    { -1, -1, -1, -1, -1,  3,  4 },
-    { -1, -1, -1, -1, -1, -1,  2 },
-    { -1, -1, -1, -1, -1, -1, -1 },
+    {  0,  0,  1,  0,  3,  3,  1 },
+    { -1,  0,  6,  0,  6,  2,  2 },
+    { -1, -1,  1,  5,  6,  5,  1 },
+    { -1, -1, -1,  0,  4,  5,  4 },
+    { -1, -1, -1, -1,  3,  3,  4 },
+    { -1, -1, -1, -1, -1,  2,  2 },
+    { -1, -1, -1, -1, -1, -1,  1 },
 };
 
 static const int cmpRanks[X][X][2] = 
 {
-    { { -1,-1 }, {  0, 0 }, {  1, 0 }, {  0, 0 }, {  2, 0 }, {  2, 1 }, {  1, 0 } },
-    { { -1,-1 }, { -1,-1 }, {  2, 2 }, {  0, 0 }, {  2, 2 }, {  1, 0 }, {  1, 1 } },
-    { { -1,-1 }, { -1,-1 }, { -1,-1 }, {  1, 2 }, {  2, 2 }, {  1, 2 }, {  0, 0 } },
-    { { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, {  1, 1 }, {  2, 2 }, {  1, 2 } },
-    { { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, {  0, 1 }, {  1, 2 } },
-    { { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, {  0, 1 } },
-    { { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 } },
+    { {  0, 0 }, {  0, 0 }, {  1, 0 }, {  0, 0 }, {  2, 0 }, {  2, 1 }, {  1, 0 } },
+    { { -1,-1 }, {  0, 0 }, {  2, 2 }, {  0, 0 }, {  2, 2 }, {  1, 0 }, {  1, 1 } },
+    { { -1,-1 }, { -1,-1 }, {  0, 0 }, {  1, 2 }, {  2, 2 }, {  1, 2 }, {  0, 0 } },
+    { { -1,-1 }, { -1,-1 }, { -1,-1 }, {  0, 0 }, {  1, 1 }, {  2, 2 }, {  1, 2 } },
+    { { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, {  0, 0 }, {  0, 1 }, {  1, 2 } },
+    { { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, {  0, 0 }, {  0, 1 } },
+    { { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, {  0, 0 } },
 };
 
+bool cmpTupleSXCompare(const TupleSX& t1, const TupleSX& t2)
+{
+    unsigned int v1 = t1.index % X, v2 = t2.index % X;
 
+    if (v1 <= v2)
+    {
+	int depth = cmpDepth[v1][v2];
+	assert(depth >= 0);
+
+	std::cout << "cmp " << v1 << "(" << t1.index << ") ? " << v2 << "(" << t2.index << ") - depth " << depth << "\n";
+
+	for (int d = 0; d < depth; ++d)
+	{
+	    if (t1.chars[d] == t2.chars[d]) continue;
+	    return (t1.chars[d] < t2.chars[d]);
+	}
+
+	const int* rs = cmpRanks[v1][v2];
+
+	std::cout << "break tie using ranks " << rs[0] << " - " << rs[1] << " = " << t1.ranks[ rs[0] ] << " - " << t2.ranks[ rs[1] ] << "\n";
+
+	return (t1.ranks[ rs[0] ] < t2.ranks[ rs[1] ]);
+    }
+    else // (v1 > v2)
+    {
+	int depth = cmpDepth[v2][v1];
+	assert(depth >= 0);
+
+	std::cout << "cmp " << v1 << "(" << t1.index << ") ? " << v2 << "(" << t2.index << ") - depth " << depth << "\n";
+
+	for (int d = 0; d < depth; ++d)
+	{
+	    if (t1.chars[d] == t2.chars[d]) continue;
+	    return (t1.chars[d] < t2.chars[d]);
+	}
+
+	const int* rs = cmpRanks[v2][v1];
+
+	std::cout << "break tie using ranks " << rs[1] << " - " << rs[0] << " = " << t1.ranks[ rs[1] ] << " - " << t2.ranks[ rs[0] ] << "\n";
+
+	return (t1.ranks[ rs[1] ] < t2.ranks[ rs[0] ]);
+    }
+}
 
 template <int X>
 struct TupleSXMerge
@@ -371,10 +388,13 @@ struct TupleSXMerge
 	int depth = cmpDepth[v1][v2];
 	assert(depth >= 0);
 
-	std::cout << "cmp " << v1 << " ? " << v2 << " - depth " << depth << "\n";
-
 	const TupleSX& t1 = m_S[v1][ m_ptr[v1] ];
 	const TupleSX& t2 = m_S[v2][ m_ptr[v2] ];
+	
+	assert( t1.index % X == v1 );
+	assert( t2.index % X == v2 );
+
+	std::cout << "cmp " << v1 << "(" << t1.index << ") ? " << v2 << "(" << t2.index << ") - depth " << depth << "\n";
 
 	for (int d = 0; d < depth; ++d)
 	{
@@ -407,7 +427,7 @@ struct TupleSXMerge
 	    assert( r2 == rs[1] );
 	}
 	
-	std::cout << "break tie using ranks " << rs[0] << " - " << rs[1] << "\n";
+	std::cout << "break tie using ranks " << rs[0] << " - " << rs[1] << " = " << t1.ranks[ rs[0] ] << " - " << t2.ranks[ rs[1] ] << "\n";
 
 	return (t1.ranks[ rs[0] ] < t2.ranks[ rs[1] ]);
     }
@@ -441,6 +461,7 @@ uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
 
     unsigned int localOffset = myproc * localSizeGeneral;
     unsigned int localSize = (myproc != nprocs-1) ? localSizeGeneral : globalSize - localOffset;
+    unsigned int localSizeReal = (myproc != nprocs-1) ? localSizeGeneral + (X-1) : globalSize - localOffset;
 
     printf("localSize = %d\n", localSize);
 
@@ -462,7 +483,7 @@ uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
 	    R[j].index = localOffset + i + DC[d];
 
 	    for (uint x = i + DC[d], y = 0; y < X; ++x, ++y)
-		R[j].chars[y] = (x < localSize) ? input[x] : 0;
+		R[j].chars[y] = (x < localSizeReal) ? input[x] : 0;
 
 	    ++j;
 	}
@@ -583,38 +604,7 @@ uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
 
 	    // really no need for all this sorting: just name using loser tree!
 
-#if 0
-	    {
-		Debug5(  //Lastverteilung
-		    double MergeSA12= MPI_Wtime() - starttime;
-		    double maxMergeSA12;
-		    double minMergeSA12;
-		    double maxAlltoallSA12;
-		    double minAlltoallSA12;
-		    uint max;
-		    uint min;
-		    Debug6(std::cout << myproc << " first MPI_Alltoallv: before "<< n12<<" after " << recvoff[ nprocs ]<<" mergetime "<<MergeSA12 << std::endl;
-			   for(int i=0;i<nprocs;i++)std::cout<< recvcnt[i]<<" r "; std::cout<<std::endl; )
-		    MPI_Reduce(&recvoff[nprocs], &max, 1, MPI_UNSIGNED, MPI_MAX, ROOT, MPI_COMM_WORLD);
-		    MPI_Reduce(&recvoff[nprocs], &min, 1, MPI_UNSIGNED, MPI_MIN, ROOT, MPI_COMM_WORLD);
-		    MPI_Reduce(&AlltoallSA12, &maxAlltoallSA12, 1, MPI_DOUBLE, MPI_MAX, ROOT, MPI_COMM_WORLD);
-		    MPI_Reduce(&AlltoallSA12, &minAlltoallSA12, 1, MPI_DOUBLE, MPI_MIN, ROOT, MPI_COMM_WORLD);
-		    MPI_Reduce(&MergeSA12, &maxMergeSA12, 1, MPI_DOUBLE, MPI_MAX, ROOT, MPI_COMM_WORLD);
-		    MPI_Reduce(&MergeSA12, &minMergeSA12, 1, MPI_DOUBLE, MPI_MIN, ROOT, MPI_COMM_WORLD);
-
-		    uint space=11;
-/**
-   min -- max -- max-min -- %-Diff -- %-Tuple -- merge-min -- merge-max -- %-Diff -- alltoall-min  -- alltoall-max
-*/
-
-		    if (myproc==ROOT) {std::cout<< setw( space )<<min<< setw( space )<<max<< setw( space )<<max-min<< setw( space );
-			std::cout.precision(4);
-			std::cout << (double)(max-min)/min*100<< setw( space )<<100*k/(2*localSize/3.0)<< setw( space )<< minMergeSA12<< setw( space )<<maxMergeSA12<<setw (space)<<(maxMergeSA12-minMergeSA12)/minMergeSA12*100 << setw( space )<<minAlltoallSA12<< setw( space )<< maxAlltoallSA12<<"  SA12"<<std::endl;}
-		    );
-	    }
-#endif
 	    delete[] helparray4;
-
 	}
 	else {
 	    std::cout << myproc << " hat nichts bekommen" << std::endl;
@@ -644,6 +634,7 @@ uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
 	for ( uint i = 0; i < R.size(); i++ ) {
 	    if ( !( R[i] == temp ) ) {
 		name++;
+		std::cout << "Giving name " << name << " to " << R[i] << "\n";
 		temp = R[i];
 	    }
 	    P[i].name = name;
@@ -765,12 +756,8 @@ uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
 	{
 	    int Psize = P.size();
 
-	    int *recvcnt, *recvoff;
-
-	    if (myproc == ROOT) {
-		recvcnt = new int[nprocs];
-		recvoff = new int[nprocs+1];
-	    }
+	    int* recvcnt = new int[nprocs];
+	    int* recvoff = new int[nprocs+1];
 
 	    MPI_Gather( &Psize, 1, MPI_INT, recvcnt, 1, MPI_INT, ROOT, MPI_COMM_WORLD );
 
@@ -780,8 +767,6 @@ uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
 		for ( int i = 1; i <= nprocs; i++ ) {
 		    recvoff[i] = recvoff[i-1] + recvcnt[i-1];
 		}
-		//recvoff[nprocs] = recvoff[nprocs-1] + recvcnt[nprocs-1];
-
 		assert( recvoff[nprocs] == namesGlobalSize );
 	    }
 
@@ -801,11 +786,11 @@ uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
 
 		DBG_ARRAY(1, "Global Names sorted cmpModDiv", Pall);
 
-		// TODO: merge and reduce at once
-
 		uint* namearray = new uint[ Pall.size() ];
 		for (unsigned int i = 0; i < Pall.size(); ++i)
 		    namearray[i] = Pall[i].name;
+
+		DBG_ARRAY2(1, "Recursion input", namearray, Pall.size());
 
 		int* rSA = new int [ Pall.size() ];
 
@@ -815,132 +800,111 @@ uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
 
 		DBG_ARRAY2(1, "Recursive SA", rSA, Pall.size());
 
+		// generate rank array - same as updating pair array with correct names
+		for (unsigned int i = 0; i < Pall.size(); ++i)
+		{
+		    Pall[ rSA[i] ].name = i+1;
+		}
+		
+		DBG_ARRAY(1, "Fixed Global Names sorted cmpModDiv", Pall);
+
+		std::swap(P, Pall);
 	    }
 
-	    MPI_Barrier(MPI_COMM_WORLD);
+	    // **********************************************************************
+	    // *** redistribute pairs partitioned by localSize
+	    
+	    if (myproc == ROOT)
+	    {
+		std::sort(P.begin(), P.end());			// sort locally by index
 
-	}
-	return NULL;
+		DBG_ARRAY(1, "Fixed Global Names sorted index", P);
+	    }
 
-#if 0
 
-// cerr<<myproc<<"alles ok"<<std::endl;
+	    if (myproc == ROOT)
+	    {
+		uint* splitterpos = new uint[nprocs+1];
 
-	Debug2( rekursionEnd[--countRek]=   MPI_Wtime() - rekursionStart[countRek] );
+		// use equidistance splitters from 0..globalSize (because indexes are fixed)
+		splitterpos[ 0 ] = 0;
+		Pair ptemp; ptemp.name=0;
+		for ( int i = 1; i < nprocs; i++ ) {
+		    ptemp.index = i * localSizeGeneral;
+	    
+		    std::vector<Pair>::const_iterator it = std::lower_bound(P.begin(), P.end(), ptemp);
+		    splitterpos[i] = it - P.begin();
+		}
+		splitterpos[ nprocs ] = P.size();
 
-	uint* n1all = new uint[ nprocs ];
-	uint* n2all = new uint[ nprocs ];
+		recvcnt[0] = splitterpos[1];
+		recvoff[0] = 0;
+		for ( int i = 1; i < nprocs; i++ )
+		{
+		    recvcnt[i] = splitterpos[i+1] - splitterpos[i];
+		    recvoff[i] = recvoff[i-1] + recvcnt[i-1];
+		    assert( recvcnt[i] >= 0 );
+		}
+		recvoff[nprocs] = recvoff[nprocs-1] + recvcnt[nprocs-1];
 
-	uint salenall;
+		DBG_ARRAY2(1, "recvcnt", recvcnt, nprocs);
+		DBG_ARRAY2(1, "recvoff", recvoff, nprocs+1);
+	    }
 
-	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime() );
+	    MPI_Bcast( recvcnt, nprocs, MPI_INT, ROOT, MPI_COMM_WORLD );
 
-	MPI_Allgather( &( n[ 1 ] ), 1, MPI_UNSIGNED, n1all, 1, MPI_UNSIGNED, MPI_COMM_WORLD );
-	MPI_Allgather( &( n[ 2 ] ), 1, MPI_UNSIGNED, n2all, 1, MPI_UNSIGNED, MPI_COMM_WORLD );
-	MPI_Scan(&sa12len, &salenall, 1, MPI_UNSIGNED, MPI_SUM, MPI_COMM_WORLD );
+	    std::vector<Pair> recvBufPair ( recvcnt[ myproc ] + D );
+	    unsigned int recvBufPairSize = recvcnt[ myproc ];
 
-	Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime );
+	    MPI_Scatterv( P.data(), recvcnt, recvoff, MPI_PAIR, recvBufPair.data(), recvBufPairSize, MPI_PAIR, ROOT, MPI_COMM_WORLD );
 
-	uint* n12all = new uint[ 2 * nprocs ];
+	    //delete[] P;
+	    P.clear();
 
-	n12all[ 0 ] = n1all[ 0 ];
-	for ( int i = 1; i < nprocs ;i++ )
-	    n12all[ i ] = n1all[ i ] + n12all[ i - 1 ];
-	for ( int i = nprocs ; i < 2*nprocs; i++ )
-	    n12all[ i ] = n2all[ i - nprocs ] + n12all[ i - 1 ];
-	n12all[ 2 * nprocs - 1 ] ++; // die letzte 'Grenze wird um eins erhöht, damit das Element dem letzten PE gehört
+	    DBG_ARRAY2(1, "Pairs P (globally sorted by index)", recvBufPair.data(), recvBufPairSize);
 
-	delete[] n1all;
-	delete[] n2all;
+	    // **********************************************************************
+	    // *** every PE needs D additional sample suffix ranks to complete the final tuple
 
-	for ( int i = 0 ; i < nprocs ; i++ )  sendcnt[ i ] = 0;
-	P = new Pair[ sa12len ];
-	salenall=salenall-sa12len+1;
+	    Pair temp[ D ];
 
-	for ( uint i = 0; i < sa12len; i++ ) {
-	    P[ i ].name = i + salenall;
-	    P[ i ].index = sa12rec[ i ];
-	    sa12rec[ i ] = findPosSA( n12all, sa12rec[ i ], nprocs, sendcnt );
+	    MPI_Sendrecv( recvBufPair.data(), D, MPI_PAIR, ( myproc - 1 + nprocs ) % nprocs, MSGTAG,
+			  &temp, D, MPI_PAIR, ( myproc + 1 ) % nprocs, MSGTAG,
+			  MPI_COMM_WORLD, &status );
 
-//          sendcnt[sa12rec[i]]++;
-	    Debug0( if( sa12rec[ i ] >= (uint)nprocs )
-			std::cout << myproc << " Hier stimmt was nicht " << sa12rec[ i ] << " sollte kleiner sein als #PEs" << std::endl;
-		);
-	};
-//      delete[] salenAll;
-	sendarray = new Pair[ sa12len ];
-	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime() );
+	    if ( myproc == nprocs - 1 )	// last processor gets sentinel tuples with maximum ranks
+	    {
+		for (unsigned int i = 0; i < D; ++i)
+		{
+		    recvBufPair[ recvBufPairSize + i ].name = INT_MAX;
+		    recvBufPair[ recvBufPairSize + i ].index = recvBufPair[ recvBufPairSize - D ].index + X + DC[i];
+		}
+	    }
+	    else	// other processors get D following tuples with indexes from the DC
+	    {
+		for (unsigned int i = 0; i < D; ++i)
+		{
+		    recvBufPair[ recvBufPairSize + i ].name = temp[i].name;
+		    recvBufPair[ recvBufPairSize + i ].index = recvBufPair[ recvBufPairSize - D ].index + X + DC[i];
+		    assert( recvBufPair[ recvBufPairSize + i ].index == temp[i].index );
+		}
+	    }
 
-	MPI_Alltoall( sendcnt, 1, MPI_INT, recvcnt, 1, MPI_INT, MPI_COMM_WORLD );
+	    //std::cout<<"CPU ["<<myproc<<"] nach rekursion"<<std::endl;
 
-	Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime );
+	    //std::sort( recvBufPair.begin(), recvBufPair.end(), cmpIndexModDiv );
 
-	sendoff[ 0 ] = 0;
-	recvoff[ 0 ] = 0;
+	    std::swap(recvBufPair, P);
 
-	index = new uint[nprocs];
+	    DBG_ARRAY(1, "Pairs P (globally sorted by index + extra tuples)", P);
 
-	for ( int i = 0 ; i < nprocs; i++ ) {
-	    index[ i ] = 0;
-	    sendoff[ i + 1 ] = sendcnt[ i ] + sendoff[ i ];
-	    recvoff[ i + 1 ] = recvoff[ i ] + recvcnt[ i ];
-	}
+	    delete[] recvcnt;
+	    delete[] recvoff;
 
-	for ( uint i = 0; i < sa12len; i++ )
-	    sendarray[ sendoff[ sa12rec[ i ] ] + index[ sa12rec[ i ] ] ++ ] = P[ i ];
+	} // end use sequential suffix sorter
 
-	delete[] index;
-	delete[] sa12rec;
-	delete[] P;
-
-	Pair* recvarray = new Pair[ recvoff[ nprocs ] + 2 ];
-
-	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)     starttime = MPI_Wtime() );
-
-	MPI_Alltoallv( sendarray, sendcnt, sendoff, MPI_PAIR, recvarray, recvcnt, recvoff, MPI_PAIR, MPI_COMM_WORLD );
-
-	Debug3( alltoallvTime += MPI_Wtime() - starttime );
-
-	delete[] sendarray;
-	uint half = ( localSize + 2 ) / 3 + 1;
-	P = new Pair[ 2 * half ];
-
-	Debug2( starttime = MPI_Wtime() );
-
-	sortPair( recvarray, P, recvoff[ nprocs ], n12all, half );
-
-	Debug2( permuteTime += MPI_Wtime() - starttime );
-
-	delete[] recvarray;
-	delete[] n12all;
-
-	Pair* sendTmp = new Pair[ 2 ];
-	Pair* recvTmp = new Pair[ 2 ];
-
-	sendTmp[ 0 ] = P[ 0 ];
-	sendTmp[ 1 ] = P[ half ];
-
-	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime() );
-
-	MPI_Sendrecv( sendTmp, 2, MPI_PAIR, ( myproc - 1 + nprocs ) % nprocs, MSGTAG, recvTmp, 2, MPI_PAIR, ( myproc + 1 ) % nprocs , MSGTAG, MPI_COMM_WORLD, &status );
-
-	Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime );
-
-	delete[] sendTmp;
-
-	P[ n[ 1 ] ] = recvTmp[ 0 ];
-	P[ half + n[ 2 ] ] = recvTmp[ 1 ];
-
-	delete[] recvTmp;
-	delete[] sendcnt; //Hier richtig?
-	delete[] sendoff;
-	delete[] recvcnt;
-	delete[] recvoff;
-
-	uint* satmp = sortS0S1S2( input, P, localSize, n, imod3, salen, half );
-	return satmp;
-	/** end recursion */
-#endif
+	if ( myproc == ROOT )
+	    std::cout << "---------------------   END  RECURSION  --------------- " << std::endl;
     }
     else {
 	if ( myproc == ROOT )
@@ -964,7 +928,7 @@ uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
 	Pair ptemp;
 	ptemp.name=0;
 	for ( int i = 1; i < nprocs; i++ ) {
-	    ptemp.index = i * localSize;	// TODO: check range (maybe index doesnt start at 0)?
+	    ptemp.index = i * localSizeGeneral;	// TODO: check range (maybe index doesnt start at 0)?
 	    
 	    std::vector<Pair>::const_iterator it = std::lower_bound(P.begin(), P.end(), ptemp);
 	    splitterpos[i] = it - P.begin();
@@ -1025,7 +989,7 @@ uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
 	{
 	    for (unsigned int i = 0; i < D; ++i)
 	    {
-		recvBufPair[ recvBufPairSize + i ].name = MAX_INT;
+		recvBufPair[ recvBufPairSize + i ].name = INT_MAX;
 		recvBufPair[ recvBufPairSize + i ].index = recvBufPair[ recvBufPairSize - D ].index + X + DC[i];
 	    }
 	}
@@ -1045,7 +1009,7 @@ uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
 
 	std::swap(recvBufPair, P);
 
-	DBG_ARRAY(1, "Pairs P (globally sorted by index + extra tuples)", recvBufPair);
+	DBG_ARRAY(1, "Pairs P (globally sorted by index + extra tuples)", P);
 
 	delete[] sendcnt;
 	delete[] sendoff;
@@ -1053,7 +1017,7 @@ uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
 	delete[] recvoff;
     }
 
-    // P contains pairs of index and global rank
+    // P contains pairs of index and global rank: sorted by index and partitioned by localSize
 
     // **********************************************************************
     // *** Generate tuple arrays of samples and non-samples
@@ -1069,10 +1033,10 @@ uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
     {
 	for (unsigned int k = 0; k < X; ++k)
 	{
-	    S[k][i].index = myproc * localSize + i * X + k;
+	    S[k][i].index = myproc * localSizeGeneral + i * X + k;
 
 	    for (unsigned int c = 0; c < X-1; ++c)
-		S[k][i].chars[c] = input[ i*X + k + c ];
+		S[k][i].chars[c] = (i*X + k + c < localSizeReal) ? input[ i*X + k + c ] : 0;
 
 	    for (unsigned int d = 0; d < D; ++d)
 		S[k][i].ranks[d] = P[ dp + d ].name;
@@ -1121,7 +1085,7 @@ uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
 
 	if ( myproc == ROOT )
 	{
-	    std::sort( samplebufall, samplebufall + nprocs * X * samplesize, cmpTupleSXdepth<6> );
+	    std::sort( samplebufall, samplebufall + nprocs * X * samplesize, cmpTupleSXCompare );
 
 	    DBG_ARRAY2(1, "Sample splitters", samplebufall, nprocs * X * samplesize);
 
@@ -1148,9 +1112,7 @@ uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
 	    splitterpos[k][0] = 0;
 	    for ( int i = 1; i < nprocs; i++ )
 	    {
-		//splitterpos[i] = findPos( R.data(), splitterbuf[i].data(), R.size(), cmpSplitterGreaterS12 );
-
-		std::vector<TupleSX>::const_iterator it = std::lower_bound(S[k].begin(), S[k].end(), splitterbuf[i], cmpTupleSXdepth<6> );
+		std::vector<TupleSX>::const_iterator it = std::lower_bound(S[k].begin(), S[k].end(), splitterbuf[i], cmpTupleSXCompare );
 
 		splitterpos[k][i] = it - S[k].begin();
 	    }
@@ -1254,6 +1216,9 @@ uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
 	{
 	    suffixarray[j] = S[top][ tuplecmp.m_ptr[top] ];
 	    suffixarray2[j] = suffixarray[j].index;
+
+	    std::cout << "Winning tuple: " << suffixarray[j] << "\n";
+
 	    if (suffixarray[j].index < globalSize) ++j;
 
 	    tuplecmp.m_ptr[top]++;
@@ -1711,11 +1676,6 @@ int main( int argc, char **argv )
 	std::cerr << "Error: requires more than one MPI processor (use -np 2)." << std::endl;
 	return -1;
     }
-    else if (nprocs % 2 != 0)
-    {
-	std::cerr << "Error: requires an even number of  MPI processors." << std::endl;
-	return -1;
-    }
 
     mpi_init_datatypes();
 
@@ -1828,36 +1788,73 @@ int main( int argc, char **argv )
     // **********************************************************************
     // * Construct suffix array recursively
     
-    Debug2( rekursionStart[countRek++]= MPI_Wtime() );
-    Debug1( dc3StartTime = MPI_Wtime() );
-
     uint    salen;
     uint*   suffixarray = dc3( input, filelength, &salen, localSize );
 
-    Debug1( dc3FinishTime = MPI_Wtime() - dc3StartTime );
-    Debug2( rekursionEnd[--countRek]=   MPI_Wtime() - rekursionStart[countRek] );
-
-    Debug1( if ( myproc == ROOT ) std::cout << "Zeit für Erstellen von Suffixarry = "<<dc3FinishTime<<std::endl );
-
-    Debug2(
-	if (myproc==ROOT) //Zeitmessung
-	    MPI_Recv( name2tuple, 35, MPI_DOUBLE, nprocs - 1, MSGTAG, MPI_COMM_WORLD, &status );
-	if (myproc==nprocs-1)
-	    MPI_Send( name2tuple, 35, MPI_DOUBLE, 0, MSGTAG , MPI_COMM_WORLD );
-	int token = 0;
-	if ( myproc == ROOT ) {
-	    std::cout << " CPU    Gesamtzeit    Sort    Merge     Permute   MPI_Alltoallv  MPI_Com   Rest   Zeit/Zeichen " << std::endl;
-	    token = 1;
-	}
-	if ( !token )
-	    MPI_Recv( &token, 1, MPI_INT, myproc - 1, MSGTAG, MPI_COMM_WORLD, &status );
-	writeTimes( filelength );
-	if ( myproc != nprocs - 1 )
-	    MPI_Send( &token, 1, MPI_INT, ( myproc + 1 ) % nprocs, MSGTAG , MPI_COMM_WORLD );
-	);
-
     if ( argc > 2 ) {
-	writesa( &salen, suffixarray, argv[ 2 ] );
+	//writesa( &salen, suffixarray, argv[ 2 ] );
+    }
+
+    // **********************************************************************
+    // * Collect and check suffix array
+
+    {
+	int* recvcnt = new int[nprocs];
+	int* recvoff = new int[nprocs+1];
+
+	MPI_Gather( &salen, 1, MPI_INT, recvcnt, 1, MPI_INT, ROOT, MPI_COMM_WORLD );
+
+	if (myproc == ROOT)
+	{
+	    recvoff[0] = 0;
+	    for ( int i = 1; i <= nprocs; i++ ) {
+		recvoff[i] = recvoff[i-1] + recvcnt[i-1];
+	    }
+	    assert( recvoff[nprocs] == filelength );
+	}
+
+	std::vector<uint> SA;
+
+	if (myproc == ROOT)
+	    SA.resize( filelength );
+
+	MPI_Gatherv(suffixarray, salen, MPI_INT,
+		    SA.data(), recvcnt, recvoff, MPI_INT, ROOT, MPI_COMM_WORLD);
+
+	if (myproc == ROOT)
+	{
+	    DBG_ARRAY(1, "Suffixarray collected", SA);
+	    
+	    std::ifstream infile( filename );
+	    if (!infile.good()) {
+		perror("Cannot read input file");
+		return -1;
+	    }
+
+	    std::vector<char> string(filelength);
+
+	    infile.read((char*)string.data(), filelength);
+	    if (!infile.good()) {
+		perror("Cannot read input file");
+		return -1;
+	    }
+
+	    std::cout << "result suffix array: \n";
+
+	    for (unsigned int i = 0; i < SA.size(); ++i)
+	    {
+		std::cout << i << " : " << SA[i] << " : ";
+
+		for (unsigned int j = 0; SA[i]+j < filelength; ++j)
+		{
+		    std::cout << string[SA[i]+j] << " ";
+		}
+
+		std::cout << "\n";
+	    }
+
+	    assert( sachecker::sa_checker(string, SA) );
+	}
     }
 
     MPI_Finalize();
