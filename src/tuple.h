@@ -15,6 +15,13 @@ public:
 	return index < a.index;
     }
 
+    template <int X>
+    static inline
+    bool cmpIndexModDiv( const Pair& a, const Pair& b ) {
+	return ( a.index % X < b.index % X ) ||
+	    ( ( a.index % X == b.index % X ) && ( a.index / X < b.index / X ) );
+    }
+
     std::string str() const {
 	std::ostringstream os;
 	os << "(" << name << "," << index << ")";
