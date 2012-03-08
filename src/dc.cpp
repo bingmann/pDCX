@@ -26,6 +26,8 @@ static const unsigned int DC[3] = { 0, 1, 3 };
 static const unsigned int DCH[X] = { 3, 6, 6, 5, 6, 5, 4 };	// additional chars in tuple
 static const unsigned int DCD[X] = { 0, 0, 1, 0, 3, 2, 1 };	// depth to sort chars before using first rank
 
+static const unsigned int inDC[X] = { 1, 1, 0, 1, 0, 0, 0 };
+
 static const bool debug = true;
 
 #include <mpi.h>
@@ -45,6 +47,9 @@ static const bool debug = true;
 #include <cassert>
 #include <cmath>
 #include <vector>
+#include <limits>
+
+#include "yuta-sais-lite.h"
 
 typedef unsigned int	uint;
 
@@ -79,9 +84,8 @@ typedef TupleA<X>	TupleX;
     }										\
 } while(0)
 
-uint* dc3( uint* inbuffer, uint filelength, uint* salen );
-uint* sortS0S1S2( uint* inbuffer, Pair* P, uint localArraylen, uint* n, uint* imod3, uint* salen, uint& half);
-inline void getTuple(uint* inbuffer, Pair* recvBufPair, Quintuple* S0, Quadruple* S1, Quintuple* S2, uint localArraylen, uint* n,  uint* imod3, uint& half);
+uint* sortS0S1S2( uint* inbuffer, Pair* P, uint localSize, uint* n, uint* imod3, uint* salen, uint& half);
+inline void getTuple(uint* inbuffer, Pair* recvBufPair, Quintuple* S0, Quadruple* S1, Quintuple* S2, uint localSize, uint* n,  uint* imod3, uint& half);
 
 inline int namelex( TupleX* in, Pair* P, uint arraylen );
 
@@ -225,6 +229,189 @@ void mpi_init_datatypes()
 #endif
 }
 
+template < typename Comparator >
+class LoserTree
+{
+private:
+
+    /// the tree of size n-1
+    std::vector<int>	m_tree;
+
+    /// the comparator object of this tree
+    const Comparator&	m_less;
+
+public:
+
+    LoserTree(unsigned int size, const Comparator& less)
+	: m_less(less)
+    {
+	// initialize loser tree by performing comparisons
+
+	unsigned int treesize = (1 << (int)(log2(size - 1) + 2)) - 1;
+	m_tree.resize(treesize, -1);
+
+	// fill in lowest level: ascending numbers until each sequence
+	// finishes.
+	int levelput = m_tree.size() / 2;
+	for (unsigned int i = 0; i < size; ++i)
+	    m_tree[levelput + i] = i;
+
+	int levelsize = levelput + 1;
+
+	// construct higher levels iteratively from bottom up
+	while ( levelsize > 1 )
+	{
+	    levelsize = levelsize / 2;
+	    int levelget = levelput;
+	    levelput /= 2;
+
+	    for (int i = 0; i < levelsize; ++i)
+	    {
+		if ( m_tree[levelget + 2*i + 1] < 0 )
+		    m_tree[levelput + i] = m_tree[levelget + 2*i];
+		else if (m_less( m_tree[levelget + 2*i], m_tree[levelget + 2*i + 1] ))
+		    m_tree[levelput + i] = m_tree[levelget + 2*i];
+		else
+		    m_tree[levelput + i] = m_tree[levelget + 2*i + 1];
+	    }
+	}
+    }
+
+    int top() const
+    {
+	return m_tree[0];
+    }
+
+    void replay(bool done)
+    {
+	int top = m_tree[0];
+
+	int p = (m_tree.size() / 2) + top;
+	
+	if (done) top = -1;	// mark sequence as done
+
+	while( p > 0 )
+	{
+	    m_tree[p] = top;
+
+	    p -= (p+1) % 2;	// round down to left node position
+    
+	    if (m_tree[p] < 0)
+		top = m_tree[p+1];
+	    else if (m_tree[p+1] < 0)
+		top = m_tree[p];
+	    else if ( m_less( m_tree[p], m_tree[p+1] ) )
+		top = m_tree[p];
+	    else
+		top = m_tree[p+1];
+
+	    p /= 2;
+	}
+
+	m_tree[p] = top;
+    }
+
+    void print() const
+    {
+	int levelsize = 1;
+	int j = 0;
+
+	for (unsigned int i = 0; i < m_tree.size(); ++i)
+	{
+	    if (i >= j + levelsize) {
+		std::cout << "\n";
+		j = i; levelsize *= 2;
+	    }
+	    std::cout << m_tree[i] << " ";
+	}
+	std::cout << "\n";
+    }
+};
+
+static const int cmpDepth[X][X] = 
+{
+    { -1,  0,  1,  0,  3,  3,  1 },
+    { -1, -1,  6,  0,  6,  2,  2 },
+    { -1, -1, -1,  5,  6,  5,  1 },
+    { -1, -1, -1, -1,  4,  5,  4 },
+    { -1, -1, -1, -1, -1,  3,  4 },
+    { -1, -1, -1, -1, -1, -1,  2 },
+    { -1, -1, -1, -1, -1, -1, -1 },
+};
+
+static const int cmpRanks[X][X][2] = 
+{
+    { { -1,-1 }, {  0, 0 }, {  1, 0 }, {  0, 0 }, {  2, 0 }, {  2, 1 }, {  1, 0 } },
+    { { -1,-1 }, { -1,-1 }, {  2, 2 }, {  0, 0 }, {  2, 2 }, {  1, 0 }, {  1, 1 } },
+    { { -1,-1 }, { -1,-1 }, { -1,-1 }, {  1, 2 }, {  2, 2 }, {  1, 2 }, {  0, 0 } },
+    { { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, {  1, 1 }, {  2, 2 }, {  1, 2 } },
+    { { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, {  0, 1 }, {  1, 2 } },
+    { { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, {  0, 1 } },
+    { { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 }, { -1,-1 } },
+};
+
+
+
+template <int X>
+struct TupleSXMerge
+{
+    const std::vector<TupleSX>*	 m_S;
+    
+    std::vector<unsigned int>	 m_ptr;
+
+    TupleSXMerge(const std::vector<TupleSX>* S)
+	: m_S(S), m_ptr(X, 0)
+    {
+    }
+
+    inline bool operator()(int v1, int v2) const
+    {
+	assert( v1 < v2 );
+
+	int depth = cmpDepth[v1][v2];
+	assert(depth >= 0);
+
+	std::cout << "cmp " << v1 << " ? " << v2 << " - depth " << depth << "\n";
+
+	const TupleSX& t1 = m_S[v1][ m_ptr[v1] ];
+	const TupleSX& t2 = m_S[v2][ m_ptr[v2] ];
+
+	for (int d = 0; d < depth; ++d)
+	{
+	    if (t1.chars[d] == t2.chars[d]) continue;
+	    return (t1.chars[d] < t2.chars[d]);
+	}
+
+	const int* rs = cmpRanks[v1][v2];
+
+	{ // self-check matrices
+
+	    int d;
+	    uint p1 = v1, p2 = v2;
+	    int r1 = 0, r2 = 0;
+
+	    for (d = 0; d < X; ++d)
+	    {
+		if (inDC[ p1 % X ] && inDC[ p2 % X ])
+		    break;
+
+		if (inDC[ p1 % X ]) r1++;
+		if (inDC[ p2 % X ]) r2++;
+
+		assert( t1.chars[d] == t2.chars[d] );
+		p1++, p2++;
+	    }
+
+	    assert( d == depth );
+	    assert( r1 == rs[0] );
+	    assert( r2 == rs[1] );
+	}
+	
+	std::cout << "break tie using ranks " << rs[0] << " - " << rs[1] << "\n";
+
+	return (t1.ranks[ rs[0] ] < t2.ranks[ rs[1] ]);
+    }
+};
 
 /**
  *
@@ -233,48 +420,49 @@ void mpi_init_datatypes()
  * @param salen
  * @return suffixarray
  */
-uint* dc3( uint* input, uint N, uint* salen, uint localArraylen )
+uint* dc3( uint* input, uint globalSize, uint* salen, uint localSizeGeneral )
 {
-    // Debug6( std::cout << "dc3 gestartet" << std::endl; )
+    if ( myproc == ROOT )
+	std::cout << "******************** DCX ********************" << std::endl;
 
-    /** Tupel einlesen*/
 
-    // Anzahl mod 1, mod 2, mod 3 Tupel berechnen. Ist für jedes PE +-1 Element gleich
-    //uint localArraylen = ( filelength + nprocs - 1 ) / nprocs ;
+    //uint localSize = ( globalSize + nprocs - 1 ) / nprocs ;
 
-    uint samplesize = (uint)sqrt(2.0 * localArraylen / 3.0 / nprocs) * samplefactor;
+    uint samplesize = (uint)sqrt(2.0 * localSizeGeneral / 3.0 / nprocs) * samplefactor;
 
-// Debug5(  if ( myproc == ROOT ) std::cout << "samplefactor=" << k <<" |Tuple|="<<2*(localArraylen/3)<<" in %="<<100*k/(2*localArraylen/3.0)<<std::endl;)
-//  int k=(uint) ceil(samplefactor*(sqrt(2.0*localArraylen/3.0)/100));
+// Debug5(  if ( myproc == ROOT ) std::cout << "samplefactor=" << k <<" |Tuple|="<<2*(localSizeGeneral/3)<<" in %="<<100*k/(2*localSizeGeneral/3.0)<<std::endl;)
+//  int k=(uint) ceil(samplefactor*(sqrt(2.0*localSizeGeneral/3.0)/100));
 
-    if( samplesize >= 2*(localArraylen/3)) samplesize = 2*(localArraylen/3)-1;
+    if( samplesize >= 2*(localSizeGeneral/3)) samplesize = 2*(localSizeGeneral/3)-1;
 
-// if ( myproc == ROOT ) std::cout << "samplefactor=" << k <<" |Tuple|="<<2*(localArraylen/3)<<" in %="<<100*k/(2*localArraylen/3.0)<<std::endl;
+// if ( myproc == ROOT ) std::cout << "samplefactor=" << k <<" |Tuple|="<<2*(localSizeGeneral/3)<<" in %="<<100*k/(2*localSizeGeneral/3.0)<<std::endl;
 
-    unsigned int myAoffset = myproc * localArraylen;
-    unsigned int myArraylen = (myproc != nprocs-1) ? localArraylen : N - myAoffset;
+    unsigned int globalMultipleOfX = (globalSize + X - 1) / X;	// rounded up number of global multiples of X
 
-    printf("myArraylen = %d\n", myArraylen);
+    unsigned int localOffset = myproc * localSizeGeneral;
+    unsigned int localSize = (myproc != nprocs-1) ? localSizeGeneral : globalSize - localOffset;
+
+    printf("localSize = %d\n", localSize);
 
     // **********************************************************************
     // * calculate build DC-tuple array and sort locally
 
-    const unsigned int M = myArraylen / X;		// multiples of complete X chars in local area size
-    const unsigned int M2 = (X * M == myArraylen ? M : M+1); // number of incomplete X chars in local area size
+    const unsigned int M = localSize / X;		// multiples of complete X chars in local area size
+    const unsigned int M2 = (localSize + X - 1) / X;	// number of incomplete X chars in local area size
 
-    std::cout << "myAlen = " << myArraylen << " - M = " << M << " - M2 = " << M2 << "\n";
+    std::cout << "localSize = " << localSize << " - M = " << M << " - M2 = " << M2 << "\n";
 
-    std::vector<TupleX> R (D * M2);		// create D*M2 tuples which might include up to M-1 dummies
+    std::vector<TupleX> R (D * M2);			// create D*M2 tuples which might include up to D-1 dummies
 
     uint j = 0 ;
-    for (uint i = 0; i < myArraylen; i += X)
+    for (uint i = 0; i < localSize; i += X)
     {
 	for (uint d = 0; d < D; ++d)
 	{
-	    R[j].index = myAoffset + i + DC[d];
+	    R[j].index = localOffset + i + DC[d];
 
 	    for (uint x = i + DC[d], y = 0; y < X; ++x, ++y)
-		R[j].chars[y] = (x < myArraylen) ? input[x] : 0;
+		R[j].chars[y] = (x < localSize) ? input[x] : 0;
 
 	    ++j;
 	}
@@ -421,7 +609,7 @@ uint* dc3( uint* input, uint N, uint* salen, uint localArraylen )
 
 		    if (myproc==ROOT) {std::cout<< setw( space )<<min<< setw( space )<<max<< setw( space )<<max-min<< setw( space );
 			std::cout.precision(4);
-			std::cout << (double)(max-min)/min*100<< setw( space )<<100*k/(2*localArraylen/3.0)<< setw( space )<< minMergeSA12<< setw( space )<<maxMergeSA12<<setw (space)<<(maxMergeSA12-minMergeSA12)/minMergeSA12*100 << setw( space )<<minAlltoallSA12<< setw( space )<< maxAlltoallSA12<<"  SA12"<<std::endl;}
+			std::cout << (double)(max-min)/min*100<< setw( space )<<100*k/(2*localSize/3.0)<< setw( space )<< minMergeSA12<< setw( space )<<maxMergeSA12<<setw (space)<<(maxMergeSA12-minMergeSA12)/minMergeSA12*100 << setw( space )<<minAlltoallSA12<< setw( space )<< maxAlltoallSA12<<"  SA12"<<std::endl;}
 		    );
 	    }
 #endif
@@ -463,6 +651,8 @@ uint* dc3( uint* input, uint N, uint* salen, uint localArraylen )
 	}
 	R.clear();		// Why?: because it is easier to recreate the tuples later on
 
+	DBG_ARRAY(1, "Local Names", P);
+
 	// **********************************************************************
 	// *** renaming with global names: calculate using prefix sum
 	
@@ -473,136 +663,166 @@ uint* dc3( uint* input, uint N, uint* salen, uint localArraylen )
 	for ( uint i = 0; i < P.size(); i++ )
 	    P[i].name += (namesglob - name);
 
+	DBG_ARRAY(1, "Global Names", P);
+
 	// determine whether recursion is necessary: last proc checks its highest name
 	if (myproc == nprocs - 1)
 	{
-	    //recursion = (P.back().name == TODO
-	    recursion = false;
+	    std::cout << "last name: " << P.back().name << " -? " << D * globalMultipleOfX << "\n";
+	    recursion = (P.back().name != D * globalMultipleOfX);
+	    std::cout << "recursion: " << recursion << "\n";
 	}
 
 	MPI_Bcast( &recursion, 1, MPI_INT, nprocs - 1, MPI_COMM_WORLD );
     }
 
-    /** recursion ! */
-    if ( recursion ) {
+    if ( recursion )
+    {
+	if ( myproc == ROOT )
+	    std::cout << "---------------------   RECURSION ---------------- " << localSize << std::endl;
+
+	uint namesGlobalSize = D * globalMultipleOfX;
+	uint namesLocalSize = ( namesGlobalSize + nprocs - 1 ) / nprocs;	// rounded up 
+
+	if (namesGlobalSize > 1000)
+	{
+	    // **********************************************************************
+	    // {{{ Sample sort of array P by (i mod X, i div X)
+
+	    std::sort(P.begin(), P.end(), Pair::cmpIndexModDiv<X>);		// sort locally
+
+	    DBG_ARRAY(1, "Global Names sorted cmpModDiv", P);
+
+	    uint* splitterpos = new uint[nprocs+1];
+	    int* sendcnt = new int[nprocs];
+	    int* sendoff = new int[nprocs+1];
+	    int* recvcnt = new int[nprocs];
+	    int* recvoff = new int[nprocs+1];
+
+	    // use equidistance splitters from 0..namesGlobalSize (because indexes are known in advance)
+	    splitterpos[ 0 ] = 0;
+	    Pair ptemp;
+	    ptemp.name=0;
+	    for ( int i = 1; i < nprocs; i++ ) {
+		ptemp.index = i * namesLocalSize;	// TODO: check range (maybe index doesnt start at 0)?
+
+		unsigned int x = ptemp.index;
+
+		unsigned int divM = ptemp.index / globalMultipleOfX;
+		ptemp.index = DC[divM] + X * (ptemp.index - divM * globalMultipleOfX);
+		std::cout << "splitter: " << ptemp.index << " = " << x << " - " << divM << "\n";
+
+		std::vector<Pair>::const_iterator it = std::lower_bound(P.begin(), P.end(), ptemp, Pair::cmpIndexModDiv<X>);
+		splitterpos[i] = it - P.begin();
+	    }
+	    splitterpos[ nprocs ] = P.size();
+
+	    for ( int i = 0; i < nprocs; i++ )
+	    {
+		sendcnt[ i ] = splitterpos[ i + 1 ] - splitterpos[ i ];
+		assert( sendcnt[ i ] >= 0 );
+	    }
+
+	    MPI_Alltoall( sendcnt, 1, MPI_INT, recvcnt, 1, MPI_INT , MPI_COMM_WORLD );
+	
+	    sendoff[0] = recvoff[0] = 0;
+	    for ( int i = 1; i <= nprocs; i++ ) {
+		sendoff[i] = sendoff[i - 1] + sendcnt[i - 1];
+		recvoff[i] = recvoff[i - 1] + recvcnt[i - 1];
+	    }
+	    recvoff[nprocs] = recvoff[nprocs - 1] + recvcnt[nprocs - 1];
+
+	    std::vector<Pair> recvBufPair ( recvoff[ nprocs ] );
+	    unsigned int recvBufPairSize = recvoff[ nprocs ];
+
+	    MPI_Alltoallv( P.data(), sendcnt, sendoff, MPI_PAIR, recvBufPair.data(), recvcnt, recvoff, MPI_PAIR, MPI_COMM_WORLD );
+
+	    //delete[] P;
+	    P.clear();
+
+	    Pair* helparray2 = new Pair[ recvBufPairSize ];
+	    mergesort( recvBufPair.data(), helparray2, 0, nprocs, recvoff, Pair::cmpIndexModDiv<X> );
+	    delete[] helparray2;
+
+	    // TODO: merge and reduce at once
+
+	    uint* namearray = new uint[ recvBufPairSize ];
+	    for (unsigned int i = 0; i < recvBufPairSize; ++i)
+		namearray[i] = recvBufPair[i].index;
+	
+	    DBG_ARRAY2(1, "Pairs P (globally sorted by indexModDiv)", recvBufPair.data(), recvBufPairSize);
+
+	    // }}} end Sample sort of array P
+
+	    uint rSAsize = 0;
+	    uint* rSA = dc3( namearray, namesGlobalSize, &rSAsize, namesLocalSize );
+
+	    delete [] namearray;
+
+	    DBG_ARRAY2(1, "Recursive SA", rSA, rSAsize);
+	}
+	else
+	{
+	    int Psize = P.size();
+
+	    int *recvcnt, *recvoff;
+
+	    if (myproc == ROOT) {
+		recvcnt = new int[nprocs];
+		recvoff = new int[nprocs+1];
+	    }
+
+	    MPI_Gather( &Psize, 1, MPI_INT, recvcnt, 1, MPI_INT, ROOT, MPI_COMM_WORLD );
+
+	    if (myproc == ROOT)
+	    {
+		recvoff[0] = 0;
+		for ( int i = 1; i <= nprocs; i++ ) {
+		    recvoff[i] = recvoff[i-1] + recvcnt[i-1];
+		}
+		//recvoff[nprocs] = recvoff[nprocs-1] + recvcnt[nprocs-1];
+
+		assert( recvoff[nprocs] == namesGlobalSize );
+	    }
+
+	    std::vector<Pair> Pall;
+
+	    if (myproc == ROOT)
+		Pall.resize( namesGlobalSize );
+
+	    MPI_Gatherv(P.data(), P.size(), MPI_PAIR,
+			Pall.data(), recvcnt, recvoff, MPI_PAIR, ROOT, MPI_COMM_WORLD);
+
+	    if (myproc == ROOT)
+	    {
+		uint maxname = Pall.back().name;
+
+		std::sort(Pall.begin(), Pall.end(), Pair::cmpIndexModDiv<X>);		// sort locally
+
+		DBG_ARRAY(1, "Global Names sorted cmpModDiv", Pall);
+
+		// TODO: merge and reduce at once
+
+		uint* namearray = new uint[ Pall.size() ];
+		for (unsigned int i = 0; i < Pall.size(); ++i)
+		    namearray[i] = Pall[i].name;
+
+		int* rSA = new int [ Pall.size() ];
+
+		yuta_sais_lite::saisxx< uint*, int*, int >( namearray, rSA, Pall.size(), maxname+1 );
+
+		delete [] namearray;
+
+		DBG_ARRAY2(1, "Recursive SA", rSA, Pall.size());
+
+	    }
+
+	    MPI_Barrier(MPI_COMM_WORLD);
+
+	}
+	return NULL;
+
 #if 0
-//      if(myproc==ROOT) std::cout<<"Rekursion"<<std::endl;
-	uint names = (uint)(2*((double)N /3.0)) + 1;
-	uint newlocalArraylen = ( names + nprocs - 1 ) / nprocs;
-	uint arraylen=recvoff[nprocs];
-	uint* tmparray= new uint[arraylen];
-	Pair* sendarray= new Pair[arraylen];
-	uint* t = new uint[nprocs];
-
-	int* sendcnt= new int[nprocs];
-	int* sendoff= new int[nprocs+1];
-	int* recvcnt= new int[nprocs];
-
-	for (int i=0 ; i<nprocs ; i++) {
-	    t[i] = (i+1) * newlocalArraylen;
-	    sendcnt[i] = 0;
-	}
-	uint half_names = names / 2;
-
-	for (uint i = 0 ; i < arraylen; i++) {
-	    if (P[i].index%3==2) {
-		tmparray[i] = findPosSATest(t, half_names + P[ i ].index / 3 ,nprocs, sendcnt);
-	    }
-	    else {
-		tmparray[i] = findPosSATest(t, P[ i ].index / 3 ,nprocs, sendcnt);
-	    }
-	}
-	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime() );
-
-	MPI_Alltoall( sendcnt, 1, MPI_INT, recvcnt, 1, MPI_INT , MPI_COMM_WORLD );
-
-	Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime );
-
-	uint* index= new uint[nprocs];
-
-	sendoff[0] = recvoff[0] = 0;
-
-	for (int i = 0 ; i < nprocs ; i++) {
-	    index[i] = 0;
-	    sendoff[i+1] = sendcnt[i] + sendoff[i];
-	    recvoff[i+1] = recvcnt[i] + recvoff[i];
-	}
-
-	for (uint i = 0; i < arraylen; i++)
-	    sendarray[sendoff[tmparray[i]] + index[tmparray[i]]++]=P[i];
-
-	delete[] index;
-	delete[] P;
-	delete[] tmparray;
-
-	Pair* in = new Pair[recvoff[nprocs]];
-	Pair* recvBufPair= new Pair[recvoff[nprocs]+2];
-
-	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    starttime=MPI_Wtime() );
-
-	MPI_Alltoallv( sendarray, sendcnt, sendoff, MPI_PAIR, in, recvcnt, recvoff, MPI_PAIR, MPI_COMM_WORLD );
-
-	Debug3( alltoallvTime+= MPI_Wtime()-starttime );
-
-	delete[] sendarray;
-
-	Debug2( starttime=MPI_Wtime() );
-
-	sortPairIndex(in, recvBufPair,recvoff[nprocs], t, names);
-
-	Debug2( permuteTime+=MPI_Wtime()-starttime );
-
-	delete[] t;
-	delete[] in;
-
-	/** Sehr unwahrscheinlicher Fall: die ersten zwei Elemente werden    an das PE[nprocs-2] gegeben jedoch hat
-	    das letzte PE nur ein Element.  */
-	if ( myproc == nprocs - 1 && recvoff[ nprocs ] < 2 ) {
-	    Debug0( std::cout << "Sehr dummer unwahrscheinlicher Fall eingetreten" << std::endl; );
-	    recvBufPair[ recvoff[ nprocs ] ].name = MIN_INT;
-	    recvBufPair[ recvoff[ nprocs ] ].index = recvBufPair[ recvoff[ nprocs ] - 1 ].index + 3;
-	}
-
-	/** der recvBufPair des letzten PEs enthält am Ende ungültige Zeichen */
-	uint* newInBuffer = new uint[ newlocalArraylen + 2 ];
-	for ( int i = 0;i < recvoff[nprocs]; i++ )
-	    newInBuffer[ i ] = recvBufPair[ i ].name;
-
-
-	/**Jedes PE muss seinem linken Nachbarn noch die ersten zwei Elemente schicken. Die letzte PE bekommt diese von PE 0 und mus diese danach mit 0 und MAX_INT überschreiben*/
-	Pair temp[ 2 ];
-	Debug3( Debug4(MPI_Barrier(MPI_COMM_WORLD);)    mpiComStartTime = MPI_Wtime() );
-
-	MPI_Sendrecv( recvBufPair, 2, MPI_PAIR, ( myproc - 1 + nprocs ) % nprocs, MSGTAG, temp, 2, MPI_PAIR, ( myproc + 1 ) % nprocs , MSGTAG, MPI_COMM_WORLD, &status );
-
-	Debug3(mpiComTime += MPI_Wtime()-mpiComStartTime );
-
-	delete[] recvBufPair;
-
-	if ( myproc == nprocs - 1 ) { //letzte PE hat naturgemäß zu wenig Elemente
-	    newInBuffer[ recvoff[nprocs] ] = 0;
-	    for ( uint i = recvoff[nprocs];i < newlocalArraylen+2; i++ )
-		newInBuffer[ i ] = MAX_INT;
-	}
-	else if ((uint)recvoff[nprocs]!=newlocalArraylen) { //vorletzte PE kann zu wenig Elemente haben?!? Führt vorher schon zu Fehler. s. Rekursion start.
-	    newInBuffer[ recvoff[nprocs] ] = 0;
-	    for ( uint i = recvoff[nprocs];i < newlocalArraylen+2; i++ )
-		newInBuffer[ i ] = MAX_INT;
-	}
-	else { //alle anderen PEs
-	    newInBuffer[ newlocalArraylen ] = temp[ 0 ].name;
-	    newInBuffer[ newlocalArraylen + 1 ] = temp[ 1 ].name;
-	}
-
-
-	uint* sa12rec;
-	uint sa12len = 0;
-
-	// cerr<<myproc<<"alles ok"<<std::endl;
-
-	Debug2( rekursionStart[countRek++]= MPI_Wtime() );
-
-	sa12rec = dc3( newInBuffer, names, &sa12len, localArraylen );
 
 // cerr<<myproc<<"alles ok"<<std::endl;
 
@@ -682,7 +902,7 @@ uint* dc3( uint* input, uint N, uint* salen, uint localArraylen )
 	Debug3( alltoallvTime += MPI_Wtime() - starttime );
 
 	delete[] sendarray;
-	uint half = ( localArraylen + 2 ) / 3 + 1;
+	uint half = ( localSize + 2 ) / 3 + 1;
 	P = new Pair[ 2 * half ];
 
 	Debug2( starttime = MPI_Wtime() );
@@ -717,14 +937,14 @@ uint* dc3( uint* input, uint N, uint* salen, uint localArraylen )
 	delete[] recvcnt;
 	delete[] recvoff;
 
-	uint* satmp = sortS0S1S2( input, P, localArraylen, n, imod3, salen, half );
+	uint* satmp = sortS0S1S2( input, P, localSize, n, imod3, salen, half );
 	return satmp;
 	/** end recursion */
 #endif
     }
     else {
 	if ( myproc == ROOT )
-	    std::cout << "---------------------   keine  Recursion---------------- " << localArraylen << std::endl;
+	    std::cout << "---------------------   keine  Recursion---------------- " << localSize << std::endl;
 
 	// **********************************************************************
 	// *** sample sort pairs P by index
@@ -739,12 +959,12 @@ uint* dc3( uint* input, uint N, uint* salen, uint localArraylen )
 	int* recvcnt = new int[nprocs];
 	int* recvoff = new int[nprocs+1];
 
-	// use equidistance splitters from 0..localArraylen (because names are unique)
+	// use equidistance splitters from 0..globalSize (because names are unique)
 	splitterpos[ 0 ] = 0;
 	Pair ptemp;
 	ptemp.name=0;
 	for ( int i = 1; i < nprocs; i++ ) {
-	    ptemp.index = i * localArraylen;	// TODO: check range (maybe index doesnt start at 0)?
+	    ptemp.index = i * localSize;	// TODO: check range (maybe index doesnt start at 0)?
 	    
 	    std::vector<Pair>::const_iterator it = std::lower_bound(P.begin(), P.end(), ptemp);
 	    splitterpos[i] = it - P.begin();
@@ -849,7 +1069,7 @@ uint* dc3( uint* input, uint N, uint* salen, uint localArraylen )
     {
 	for (unsigned int k = 0; k < X; ++k)
 	{
-	    S[k][i].index = myproc * localArraylen + i * X + k;
+	    S[k][i].index = myproc * localSize + i * X + k;
 
 	    for (unsigned int c = 0; c < X-1; ++c)
 		S[k][i].chars[c] = input[ i*X + k + c ];
@@ -972,6 +1192,7 @@ uint* dc3( uint* input, uint N, uint* salen, uint localArraylen )
 
 	int** sendoff = new int*[X];
 	int** recvoff = new int*[X];
+	unsigned int totalsize = 0;
 
 	for (unsigned int k = 0; k < X; ++k)
 	{
@@ -997,6 +1218,8 @@ uint* dc3( uint* input, uint N, uint* salen, uint localArraylen )
 	    delete [] sendcnt[k];
 	    delete [] recvcnt[k];
 	    delete [] sendoff[k];
+
+	    totalsize += S[k].size();
 	}
 
 	// merge received array parts
@@ -1017,8 +1240,32 @@ uint* dc3( uint* input, uint N, uint* salen, uint localArraylen )
 	{
 	    DBG_ARRAY(1, "After samplesort S" << k, S[k]);
 	}
+
+	std::vector<TupleSX> suffixarray (totalsize);
+	uint* suffixarray2 = new uint[ totalsize ];
+	int j = 0;
+
+	TupleSXMerge<X> tuplecmp(S);
+	LoserTree< TupleSXMerge<X> > LT(X, tuplecmp);
+
+	int top;
+
+	while( (top = LT.top()) >= 0 )
+	{
+	    suffixarray[j] = S[top][ tuplecmp.m_ptr[top] ];
+	    suffixarray2[j] = suffixarray[j].index;
+	    if (suffixarray[j].index < globalSize) ++j;
+
+	    tuplecmp.m_ptr[top]++;
+
+	    LT.replay( tuplecmp.m_ptr[top] >= S[top].size() );
+	}
+
+	DBG_ARRAY2(1, "Suffixarray merged", suffixarray, j);
+
+	*salen = j;
+	return suffixarray2;
     }
-    
 }
 
 void writesa( uint* salen, uint* suffixarray, char* filenameOut )
@@ -1026,25 +1273,32 @@ void writesa( uint* salen, uint* suffixarray, char* filenameOut )
     /** Suffixarry in Datei schreiben */
     MPI_Request request;
 
-    uint* saLenAll=new uint[ nprocs ];
+    uint* saLenAll = new uint[ nprocs ];
     MPI_Gather( salen, 1, MPI_UNSIGNED, saLenAll, 1, MPI_UNSIGNED, 0, MPI_COMM_WORLD );
 
-    if ( myproc == ROOT ) {
-	int fd=open(filenameOut, O_WRONLY | O_CREAT | O_TRUNC , S_IRUSR | S_IWUSR);
-	if(fd==-1) {std::cout << "Fehler bei der Ausgabe"<<std::endl; return ;}
-	FILE* fp = fdopen(fd,"w");
-	if (!fp)std::cout <<"fehler beim öffnen"<< std::endl;
+    if ( myproc == ROOT )
+    {
+	int fd = open(filenameOut, O_WRONLY | O_CREAT | O_TRUNC , S_IRUSR | S_IWUSR);
+
+	if (fd < 0) { std::cout << "Fehler bei der Ausgabe" << std::endl; return; }
+
 	uint maxLen = 0;
 	for ( int i = 0;i < nprocs;i++ ) if ( maxLen < saLenAll[ i ] )   maxLen = saLenAll[ i ];
 
-	fwrite(&suffixarray[1],sizeof(uint),saLenAll[0]-1,fp); //abschneiden der 'null' am anfang
+	write(fd, &suffixarray[1], saLenAll[0] * sizeof(uint));
+
 	std::cout << "Von 0 Daten geschrieben" << std::endl;
 	delete[] suffixarray;
+
 	uint* outbuffer = new uint[ maxLen ];
-	for ( int k = 1;k < nprocs;k++ ) {
-	    MPI_Recv( outbuffer, saLenAll[ k ], MPI_UNSIGNED, k, MSGTAG, MPI_COMM_WORLD, &status );
-			std::cout << "salen von " << k << " ist " << saLenAll[ k ] << std::endl;
-	    fwrite(outbuffer,sizeof(uint),saLenAll[k],fp);
+
+	for (int k = 1; k < nprocs; k++)
+	{
+	    MPI_Recv( outbuffer, saLenAll[k], MPI_UNSIGNED, k, MSGTAG, MPI_COMM_WORLD, &status );
+	    std::cout << "salen von " << k << " ist " << saLenAll[ k ] << std::endl;
+
+	    write(fd, outbuffer, saLenAll[k] * sizeof(uint));
+
 //          Debug6(for (uint i=0 ; i<saLenAll[k] ; i++)
 //                      std::cout<< outbuffer[i]<<" ";
 //                  std::cout << std::endl;)
@@ -1053,10 +1307,11 @@ void writesa( uint* salen, uint* suffixarray, char* filenameOut )
 	}
 	delete[] saLenAll;
 	delete[] outbuffer;
-	if(fclose(fp)!=0) std::cout <<"Fehler beim Schließen der Datei";
+
+	if (close(fd) != 0) std::cout << "Fehler beim Schließen der Datei";
 
     }
-	else {
+    else {
 	MPI_Isend( suffixarray, *salen , MPI_UNSIGNED, 0, MSGTAG , MPI_COMM_WORLD , &request );
 	MPI_Wait( &request, &status );
 	delete[] suffixarray;
@@ -1064,7 +1319,7 @@ void writesa( uint* salen, uint* suffixarray, char* filenameOut )
     }
 }
 
-void getTuple(uint* inbuffer, Pair* recvBufPair, Quintuple* S0, Quadruple* S1, Quintuple* S2, uint localArraylen, uint* n,  uint* imod3, uint& half)
+void getTuple(uint* inbuffer, Pair* recvBufPair, Quintuple* S0, Quadruple* S1, Quintuple* S2, uint localSize, uint* n,  uint* imod3, uint& half)
 {
     /** Tupel erstellen
 	 *    S0[j]={inbuffer[i], inbuffer[i+1], P[i*2/3], P[i*2/3+1],i};              // mit i mod 3 == 0
@@ -1078,7 +1333,7 @@ void getTuple(uint* inbuffer, Pair* recvBufPair, Quintuple* S0, Quadruple* S1, Q
     pairOffset[ 3 ] = half + imod3[ 1 ] / 2; //(imod3[2]?0:1);
     pairOffset[ 4 ] = ( imod3[ 2 ] + 1 ) / 2; //(imod3[2]?1:0);
     pairOffset[ 5 ] = half ;
-    uint displacement = myproc * localArraylen;
+    uint displacement = myproc * localSize;
     uint temp;
     uint n012 = n[0]+n[1]+n[2];
     uint index[3]={0,0,0};
@@ -1114,20 +1369,20 @@ void getTuple(uint* inbuffer, Pair* recvBufPair, Quintuple* S0, Quadruple* S1, Q
     delete[] recvBufPair;
 }
 #if 0
-uint* sortS0S1S2( uint* inbuffer, Pair* recvBufPair, uint localArraylen, uint* n, uint* imod3, uint* salen, uint& half )
+uint* sortS0S1S2( uint* inbuffer, Pair* recvBufPair, uint localSize, uint* n, uint* imod3, uint* salen, uint& half )
 {
     Debug2( sortS0S1S2TimeStart = MPI_Wtime() );
-//  uint k=(uint) ceil(samplefactor*(sqrt((double)localArraylen)/300));
-    uint k = (uint)(sqrt((double) localArraylen / nprocs) *samplefactor/3.0);
-    if(k>=localArraylen/3){std::cout<<"k="<<k<<" zu groß, jetzt k="<<localArraylen/3-1<<std::endl; k=localArraylen/3-1;}
+//  uint k=(uint) ceil(samplefactor*(sqrt((double)localSize)/300));
+    uint k = (uint)(sqrt((double) localSize / nprocs) *samplefactor/3.0);
+    if(k>=localSize/3){std::cout<<"k="<<k<<" zu groß, jetzt k="<<localSize/3-1<<std::endl; k=localSize/3-1;}
 
-//  uint k1 = (uint)sqrt( localArraylen / (3.0 * nprocs) *samplefactor);
-//   if ( myproc == ROOT ) std::cout<<" k "<<3*k<<" % "<<3.0*k/localArraylen*100.0<<" Tuple " <<localArraylen<<std::endl;
-    //    std::cout << myproc << " 0:" << imod3[ 0 ] << " 1:" << imod3[ 1 ] << " 2:" << imod3[ 2 ] << " localArraylen " <<  localArraylen << std::endl;
+//  uint k1 = (uint)sqrt( localSize / (3.0 * nprocs) *samplefactor);
+//   if ( myproc == ROOT ) std::cout<<" k "<<3*k<<" % "<<3.0*k/localSize*100.0<<" Tuple " <<localSize<<std::endl;
+    //    std::cout << myproc << " 0:" << imod3[ 0 ] << " 1:" << imod3[ 1 ] << " 2:" << imod3[ 2 ] << " localSize " <<  localSize << std::endl;
     Quintuple* S0 = new Quintuple[ n[ 0 ] ];
     Quadruple* S1 = new Quadruple[ n[ 1 ] ];
     Quintuple* S2 = new Quintuple[ n[ 2 ] ];
-    getTuple( inbuffer,  recvBufPair,  S0,  S1,  S2, localArraylen,  n,  imod3,  half);
+    getTuple( inbuffer,  recvBufPair,  S0,  S1,  S2, localSize,  n,  imod3,  half);
 
     /**Samplesort für S1 */
     Debug2( starttime = MPI_Wtime() );
@@ -1162,7 +1417,7 @@ uint* sortS0S1S2( uint* inbuffer, Pair* recvBufPair, uint localArraylen, uint* n
 	samplebufS1[ i ].name[1] = S1[ int( i * d[1] ) ].name[1];
 	samplebufS1[ i ].name[2] = S1[ int( i * d[1] ) ].name[2];
 	samplebufS1[i].index = (S1[i].index / 3) + MOD0;
-	//if(samplebufS1[i].index>MOD0+(localArraylen+1)/3)std::cout<<"Fehler samplebufS1[i].index>MOD0+n[i] "<< samplebufS1[i].index<<" "<< S1[i].index/3 <<" "<<MOD0<<" "<<(localArraylen+1)/3 <<std::endl;
+	//if(samplebufS1[i].index>MOD0+(localSize+1)/3)std::cout<<"Fehler samplebufS1[i].index>MOD0+n[i] "<< samplebufS1[i].index<<" "<< S1[i].index/3 <<" "<<MOD0<<" "<<(localSize+1)/3 <<std::endl;
 
 	samplebufS2[ i ] = S2[ int( i * d[2] ) ];
 	samplebufS2[i].index = samplebufS2[i].index/3+MOD1;
@@ -1411,7 +1666,7 @@ uint* sortS0S1S2( uint* inbuffer, Pair* recvBufPair, uint localArraylen, uint* n
 	double minsortAll;
 	uint max;
 	uint min;
-//  Debug6(std::cout << myproc << " SortS0S1S2 Alltoallv: before "<< localArraylen <<" after " << *salen << std::endl; )
+//  Debug6(std::cout << myproc << " SortS0S1S2 Alltoallv: before "<< localSize <<" after " << *salen << std::endl; )
 	MPI_Reduce(salen, &max, 1, MPI_UNSIGNED, MPI_MAX, ROOT, MPI_COMM_WORLD);
 	MPI_Reduce(salen, &min, 1, MPI_UNSIGNED, MPI_MIN, ROOT, MPI_COMM_WORLD);
 	MPI_Reduce(&sortSAll, &maxsortAll, 1, MPI_DOUBLE, MPI_MAX, ROOT, MPI_COMM_WORLD);
@@ -1423,7 +1678,7 @@ uint* sortS0S1S2( uint* inbuffer, Pair* recvBufPair, uint localArraylen, uint* n
 */
 	if (myproc==ROOT) {std::cout<< setw( space )<<min<< setw( space )<<max<< setw( space )<<max-min<< setw( space );
 //  std::cout.setf( ios::scientific, ios::floatfield );
-	    std::cout << (double)(max-min)/min*100<< setw( space )<<(300.0*k)/localArraylen<< setw( space )<<minsortAll<< setw( space )<< maxsortAll<<setw (space)<<(maxsortAll-minsortAll)/minsortAll*100<<" Alltoallv all Tuple"<<std::endl;}
+	    std::cout << (double)(max-min)/min*100<< setw( space )<<(300.0*k)/localSize<< setw( space )<<minsortAll<< setw( space )<< maxsortAll<<setw (space)<<(maxsortAll-minsortAll)/minsortAll*100<<" Alltoallv all Tuple"<<std::endl;}
 	);
 
     delete[] recvbufS0;
@@ -1498,14 +1753,14 @@ int main( int argc, char **argv )
     // **********************************************************************
     // * Calculate local input size and send data portion
 
-    uint localArraylen = (uint)ceil( (double)filelength / nprocs );	// divide by processors rounding up
-    localArraylen += X - localArraylen % X;				// round up to nearest multiple of X
+    uint localSize = (uint)ceil( (double)filelength / nprocs );	// divide by processors rounding up
+    localSize += X - localSize % X;				// round up to nearest multiple of X
 
-    assert( localArraylen * nprocs >= filelength );
+    assert( localSize * nprocs >= filelength );
 
     if ( myproc == ROOT )
     {
-	std::cout << "Total input size = " << filelength << " bytes. localArraylen = " << localArraylen << std::endl;
+	std::cout << "Total input size = " << filelength << " bytes. localSize = " << localSize << std::endl;
     }
 
     // Verteilung der Daten nach inbuffer<- enthält lokal benötigte Zeichen +2 wegen Überschneidung und zum Erstellen der S0-S1 Tupel
@@ -1513,7 +1768,7 @@ int main( int argc, char **argv )
     // Send data portions to _other_ n-1 processors -- including an overlap of +(X-1) characters for the final tuples
 
     int overlap = X-1;
-    char* inputChars = new char[ localArraylen + overlap ];
+    char* inputChars = new char[ localSize + overlap ];
 
     if ( myproc == ROOT )
     {
@@ -1522,11 +1777,11 @@ int main( int argc, char **argv )
 	// Einlesen der Elemente für die Prozessoren 1 bis n-2
 	for ( int p = 1; p < nprocs; p++ )
 	{
-	    infile.seekg( p * localArraylen, std::ios::beg );
+	    infile.seekg( p * localSize, std::ios::beg );
 
-	    uint readsize = (p != nprocs-1) ? localArraylen + overlap : filelength - (p * localArraylen);
+	    uint readsize = (p != nprocs-1) ? localSize + overlap : filelength - (p * localSize);
 
-	    std::cout << "Read portion " << p << " from pos " << p * localArraylen << " of length " << readsize << std::endl;
+	    std::cout << "Read portion " << p << " from pos " << p * localSize << " of length " << readsize << std::endl;
 
 	    infile.read( inputChars, readsize );
 	    MPI_Send( inputChars, readsize, MPI_CHAR, p, MSGTAG, MPI_COMM_WORLD );
@@ -1539,10 +1794,10 @@ int main( int argc, char **argv )
 
 	// Einlesen der Elemente für Prozessor ROOT
 
-	std::cout << "Read portion 0 from pos 0 of length " << localArraylen + overlap << std::endl;
+	std::cout << "Read portion 0 from pos 0 of length " << localSize + overlap << std::endl;
 
 	infile.seekg( 0, std::ios::beg );
-	infile.read( inputChars, localArraylen + overlap );
+	infile.read( inputChars, localSize + overlap );
 
 	if (!infile.good()) {
 	    perror("Error reading file.");
@@ -1555,14 +1810,14 @@ int main( int argc, char **argv )
     }
     else // not ROOT
     {
-	MPI_Recv( inputChars, localArraylen + overlap, MPI_CHAR, ROOT, MSGTAG, MPI_COMM_WORLD, &status );
+	MPI_Recv( inputChars, localSize + overlap, MPI_CHAR, ROOT, MSGTAG, MPI_COMM_WORLD, &status );
     }
 
     // convert input characters into uint data
 
-    uint* input = new uint[ localArraylen + overlap ];
+    uint* input = new uint[ localSize + overlap ];
 
-    for ( unsigned int i = 0; i < localArraylen + overlap; i++ ) {
+    for ( unsigned int i = 0; i < localSize + overlap; i++ ) {
 	input[i] = inputChars[i];
     }
 
@@ -1577,7 +1832,7 @@ int main( int argc, char **argv )
     Debug1( dc3StartTime = MPI_Wtime() );
 
     uint    salen;
-    uint*   suffixarray = dc3( input, filelength, &salen, localArraylen );
+    uint*   suffixarray = dc3( input, filelength, &salen, localSize );
 
     Debug1( dc3FinishTime = MPI_Wtime() - dc3StartTime );
     Debug2( rekursionEnd[--countRek]=   MPI_Wtime() - rekursionStart[countRek] );
@@ -1601,7 +1856,9 @@ int main( int argc, char **argv )
 	    MPI_Send( &token, 1, MPI_INT, ( myproc + 1 ) % nprocs, MSGTAG , MPI_COMM_WORLD );
 	);
 
-    if ( argc > 3 ) writesa( &salen, suffixarray, argv[ 3 ] );
+    if ( argc > 2 ) {
+	writesa( &salen, suffixarray, argv[ 2 ] );
+    }
 
     MPI_Finalize();
     return 0;
