@@ -332,9 +332,9 @@ public:
 //static const unsigned int inDC[X] = { 1, 1, 0, 1, 0, 0, 0 };
 
     static const bool debug		= true;
-    static const bool debug_sortsample	= false;
-    static const bool debug_nameing	= false;
-    static const bool debug_recursion	= false;
+    static const bool debug_sortsample	= true;
+    static const bool debug_nameing	= true;
+    static const bool debug_recursion	= true;
     static const bool debug_finalsort	= false;
 
     static const bool debug_compare	= false;
@@ -362,7 +362,6 @@ public:
 	{
 	    return (os << "(" << p.name << "," << p.index << ")");
 	}
-
     };
 
     class TupleS
@@ -400,7 +399,6 @@ public:
 	    os << "]," << t.index << ")";
 	    return os;
 	}
-
     };
 
     struct TupleN
@@ -511,6 +509,11 @@ public:
 
     pDCX()
     {
+	MPI_Comm_rank( MPI_COMM_WORLD, &myproc );
+	MPI_Comm_size( MPI_COMM_WORLD, &nprocs );
+
+	samplefactor = nprocs;	// TODO
+
 	init_mpi_datatypes();
     }
 
@@ -609,7 +612,7 @@ public:
 
 	const unsigned int M = (localSize + X - 1) / X;			// number of incomplete X chars in local area size
 
-	if (myproc == ROOT && debug)
+	if (debug)
 	{
 	    std::cout << "******************** DCX ********************" << std::endl;
 
@@ -621,8 +624,11 @@ public:
 		      << "  globalMultipleOfX = " << globalMultipleOfX << "\n"
 		      << "  localMultipleOfX (aka M) = " << M << "\n"
 		      << "  samplesize = " << samplesize << "\n";
-
 	}
+
+	DBG_ARRAY2(debug, "Input", input, localSize);
+
+	DBG_ARRAY2(debug, "Input (extra tuples)", (input + localSize), localSizeReal - localSize);
 
 	// **********************************************************************
 	// * calculate build DC-tuple array and sort locally
@@ -751,6 +757,8 @@ public:
 	    delete [] sendoff;
 
 	    merge_areas(R, recvoff, nprocs);
+
+	    delete [] recvoff;
 	}
 	// }}} end Sample sort of array R
 
@@ -817,14 +825,15 @@ public:
 
 	if ( recursion )
 	{
-	    if (debug_recursion)
-		std::cout << "---------------------   RECURSION ---------------- " << localSize << std::endl;
-
 	    uint namesGlobalSize = D * globalMultipleOfX;
-	    uint namesLocalSize = ( namesGlobalSize + nprocs - 1 ) / nprocs;	// rounded up
+	    uint namesLocalStride = ( namesGlobalSize + nprocs - 1 ) / nprocs;		// rounded up
+	    namesLocalStride += X - namesLocalStride % X;				// round up to nearest multiple of X
 
-	    if (namesGlobalSize > 1000)
+	    if (namesGlobalSize > 2 * X * nprocs)
 	    {
+		if (debug_recursion)
+		    std::cout << "---------------------   RECURSION pDCX ---------------- " << localSize << std::endl;
+
 		// **********************************************************************
 		// {{{ Sample sort of array P by (i mod X, i div X)
 
@@ -839,11 +848,11 @@ public:
 		int* recvoff = new int[nprocs+1];
 
 		// use equidistance splitters from 0..namesGlobalSize (because indexes are known in advance)
-		splitterpos[ 0 ] = 0;
+		splitterpos[0] = 0;
 		Pair ptemp;
 		ptemp.name=0;
 		for ( int i = 1; i < nprocs; i++ ) {
-		    ptemp.index = i * namesLocalSize;	// TODO: check range (maybe index doesnt start at 0)?
+		    ptemp.index = i * namesLocalStride;
 
 		    unsigned int x = ptemp.index;
 
@@ -857,6 +866,8 @@ public:
 		    splitterpos[i] = it - P.begin();
 		}
 		splitterpos[ nprocs ] = P.size();
+
+		DBG_ARRAY2(1, "Splitters positions", splitterpos, nprocs+1);
 
 		for ( int i = 0; i < nprocs; i++ )
 		{
@@ -873,37 +884,85 @@ public:
 		}
 		recvoff[nprocs] = recvoff[nprocs - 1] + recvcnt[nprocs - 1];
 
-		std::vector<Pair> recvBufPair ( recvoff[ nprocs ] );
+		std::vector<Pair> recvBufPair ( recvoff[ nprocs ] + X-1 );
 		unsigned int recvBufPairSize = recvoff[ nprocs ];
 
 		MPI_Alltoallv( P.data(), sendcnt, sendoff, MPI_PAIR, recvBufPair.data(), recvcnt, recvoff, MPI_PAIR, MPI_COMM_WORLD );
 
-		//delete[] P;
 		P.clear();
 
-		merge_areas(recvBufPair, recvoff, nprocs);
+		// final X-1 tuples should be ignored due to recvoff areas
+		merge_areas(recvBufPair, recvoff, nprocs, Pair::cmpIndexModDiv);
+
+		// transfer additional X-1 names for last tuple
+
+		MPI_Sendrecv( recvBufPair.data(), X-1, MPI_PAIR, ( myproc - 1 + nprocs ) % nprocs, MSGTAG,
+			      recvBufPair.data() + recvBufPairSize, X-1, MPI_PAIR, ( myproc + 1 ) % nprocs, MSGTAG,
+			      MPI_COMM_WORLD, &status );
 
 		// TODO: merge and reduce at once
 
-		uint* namearray = new uint[ recvBufPairSize ];
-		for (unsigned int i = 0; i < recvBufPairSize; ++i)
-		    namearray[i] = recvBufPair[i].index;
+		uint* namearray = new uint[ recvBufPair.size() ];
+		for (unsigned int i = 0; i < recvBufPair.size(); ++i)
+		    namearray[i] = recvBufPair[i].name;
 
 		DBG_ARRAY2(debug_recursion, "Pairs P (globally sorted by indexModDiv)", recvBufPair.data(), recvBufPairSize);
 
+		DBG_ARRAY2(debug_recursion, "Extra pairs", (recvBufPair.data() + recvBufPairSize), recvBufPair.size() - recvBufPairSize);
+
 		// }}} end Sample sort of array P
+
+		recvBufPair.clear();
 
 		pDCX<DCParam, uint> rdcx;
 
-		//uint rSAsize = 0;
-		//uint* rSA = rdcx.dcx( namearray, namesGlobalSize, &rSAsize, namesLocalSize );
+		rdcx.dcx( namearray, namesGlobalSize, namesLocalStride );
 
 		//delete [] namearray;
 
-		//DBG_ARRAY2(1, "Recursive SA", rSA, rSAsize);
+		DBG_ARRAY(1, "Recursive localSA", rdcx.localSA);
+
+		uint SAsize = rdcx.localSA.size();
+		uint allSAsize[nprocs+1];
+
+		MPI_Allgather( &SAsize, 1, MPI_UNSIGNED, allSAsize, 1, MPI_UNSIGNED, MPI_COMM_WORLD );
+
+		uint sum = 0;
+		for (unsigned int i = 0; i < nprocs; ++i)
+		{
+		    uint newsum = sum + allSAsize[i];
+		    allSAsize[i] = sum;
+		    sum = newsum;
+		}
+		allSAsize[nprocs] = sum;
+
+		DBG_ARRAY2(1, "allSAsize", allSAsize, nprocs+1);
+
+		// generate array of pairs (index,rank) from localSA
+
+		P.resize( rdcx.localSA.size() );
+
+		for (unsigned int i = 0; i < rdcx.localSA.size(); ++i)
+		{
+		    // generate index in ModDiv sorted input sequence
+
+		    uint saidx = rdcx.localSA[i];
+
+		    unsigned int divM = saidx / globalMultipleOfX;
+
+		    uint index = DC[divM] + X * (saidx - divM * globalMultipleOfX);
+
+		    P[i].index = index;
+		    P[i].name = allSAsize[myproc] + i + 1;
+		}
+
+		goto SortP;
 	    }
-	    else
+	    else // use sequential suffix sorter
 	    {
+		if (debug_recursion)
+		    std::cout << "---------------------   RECURSION local sais ---------------- " << localSize << std::endl;
+
 		int Psize = P.size();
 
 		int* recvcnt = new int[nprocs];
@@ -969,10 +1028,7 @@ public:
 		    std::sort(P.begin(), P.end());			// sort locally by index
 
 		    DBG_ARRAY(debug_recursion, "Fixed Global Names sorted index", P);
-		}
 
-		if (myproc == ROOT)
-		{
 		    uint* splitterpos = new uint[nprocs+1];
 
 		    // use equidistance splitters from 0..globalSize (because indexes are fixed)
@@ -1041,10 +1097,6 @@ public:
 		    }
 		}
 
-		//std::cout<<"CPU ["<<myproc<<"] nach rekursion"<<std::endl;
-
-		//std::sort( recvBufPair.begin(), recvBufPair.end(), cmpIndexModDiv );
-
 		std::swap(recvBufPair, P);
 
 		DBG_ARRAY(debug_recursion, "Pairs P (globally sorted by index + extra tuples)", P);
@@ -1061,6 +1113,7 @@ public:
 	    if (debug_recursion)
 		std::cout << "---------------------   keine  Recursion---------------- " << localSize << std::endl;
 
+	SortP:
 	    // **********************************************************************
 	    // *** sample sort pairs P by index
 
@@ -1126,7 +1179,7 @@ public:
 	    {
 		for (unsigned int i = 0; i < D; ++i)
 		{
-		    recvBufPair[ recvBufPairSize + i ].name = INT_MAX;
+		    recvBufPair[ recvBufPairSize + i ].name = INT_MAX - D + i;
 		    recvBufPair[ recvBufPairSize + i ].index = recvBufPair[ recvBufPairSize - D ].index + X + DC[i];
 		}
 	    }
@@ -1321,25 +1374,23 @@ public:
 		totalsize += S[k].size();
 	    }
 
+	    delete [] sendcnt;
+	    delete [] sendoff;
+	    delete [] recvcnt;
+
 	    // merge received array parts
 
 	    for (unsigned int k = 0; k < X; ++k)
 	    {
 		if ( S[k].size() )
 		{
-		    //TupleN * helparray4 = new TupleN[ S[k].size() ];
+		    merge_areas(S[k], recvoff[k], nprocs, cmpTupleNdepth<6>);
 
-		    // binary merge sort!
-		    //mergesort( S[k].data(), helparray4, 0, nprocs, recvoff[k], cmpTupleNdepth<6> );
-
-		DBG_ARRAY(debug_finalsort, "Before S" << k, S[k]);
-
-		merge_areas(S[k], recvoff[k], nprocs, cmpTupleNdepth<6>);
-
-		DBG_ARRAY(debug_finalsort, "After S" << k, S[k]);
-
+		    delete [] recvoff[k];
 		}
 	    }
+
+	    delete [] recvoff;
 
 	    for (unsigned int k = 0; k < X; ++k)
 	    {
@@ -1382,15 +1433,6 @@ public:
 
     bool run(const char* filename)
     {
-	MPI_Comm_rank( MPI_COMM_WORLD, &myproc );
-	MPI_Comm_size( MPI_COMM_WORLD, &nprocs );
-
-	if (nprocs <= 1)
-	{
-	    std::cerr << "Error: requires more than one MPI processor (use -np 2)." << std::endl;
-	    return false;
-	}
-
 	// **********************************************************************
 	// * Read input file size
 
@@ -1411,8 +1453,6 @@ public:
 	}
 
 	MPI_Bcast( &globalSize, 1, MPI_UNSIGNED, ROOT, MPI_COMM_WORLD );
-
-	samplefactor = nprocs;	// TODO
 
 	// **********************************************************************
 	// * Calculate local input size (= general stride)
@@ -1590,6 +1630,9 @@ public:
 
 	MPI_Gatherv(localSA.data(), localSA.size(), MPI_INT,
 		    gSA.data(), recvcnt, recvoff, MPI_INT, ROOT, MPI_COMM_WORLD);
+
+	delete [] recvcnt;
+	delete [] recvoff;
 
 	if (myproc == ROOT)
 	{
