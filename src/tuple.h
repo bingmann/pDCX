@@ -6,34 +6,6 @@
 
 typedef unsigned int uint;
 
-class Pair {
-public:
-    uint name;
-    uint index;
-
-    bool operator< ( const Pair& a ) const {
-	return index < a.index;
-    }
-
-    template <int X>
-    static inline
-    bool cmpIndexModDiv( const Pair& a, const Pair& b ) {
-	return ( a.index % X < b.index % X ) ||
-	    ( ( a.index % X == b.index % X ) && ( a.index / X < b.index / X ) );
-    }
-
-    std::string str() const {
-	std::ostringstream os;
-	os << "(" << name << "," << index << ")";
-	return os.str();
-    }
-
-} __attribute__((packed));
-
-static inline std::ostream& operator<< (std::ostream& os, const class Pair& t)
-{
-    return (os << t.str());
-}
 
 /**
  * splitter '% /' 3 < P '%/' 3  
@@ -79,99 +51,14 @@ public:
 
 // ****************************************************************************************************
 
-template <int X>
-class TupleA
-{
-public:
-    uint	chars[X];
-    uint	index;
-
-    bool operator< (const TupleA& o) const
-    {
-	for (unsigned int i = 0; i < X; ++i)
-	{
-	    if (chars[i] == o.chars[i]) continue;
-	    return chars[i] < o.chars[i];
-	}
-	return false;
-    }
-
-    bool operator== (const TupleA& o) const
-    {
-	for (unsigned int i = 0; i < X; ++i)
-	{
-	    if (chars[i] != o.chars[i]) return false;
-	}
-	return true;
-    }
-
-    std::string str() const {
-	std::ostringstream os;
-	os << "([";
-	for (unsigned int i = 0; i < X; ++i) {
-	    if (i != 0) os << " ";
-	    os << chars[i];
-	}
-	os << "]," << index << ")";
-	return os.str();
-    }
-
-} __attribute__((packed));
-
-template <int X>
-static inline std::ostream& operator<< (std::ostream& os, const class TupleA<X>& t)
-{
-    return (os << t.str());
-}
-
-template <int X>
-bool cmpTupleXLeq( const TupleA<X>& a, const TupleA<X>& b ) {
-    return ( a == b || a < b );
-}
 
 // ****************************************************************************************************
-
-struct TupleSX
-{
-    uint	chars[6];
-    uint	ranks[3];
-    uint	index;
-
-    std::string str() const {
-	std::ostringstream os;
-	os << "(c[";
-	for (unsigned int i = 0; i < 6; ++i) {
-	    if (i != 0) os << " ";
-	    os << chars[i];
-	}
-	os << "],r[";
-	for (unsigned int i = 0; i < 3; ++i) {
-	    if (i != 0) os << " ";
-	    os << ranks[i];
-	}
-	os << "]," << index << ")";
-	return os.str();
-    }
-
-};
 
 static inline std::ostream& operator<< (std::ostream& os, const class TupleSX& t)
 {
     return (os << t.str());
 }
 
-template <int D>
-bool cmpTupleSXdepth(const TupleSX& a, const TupleSX& b)
-{
-    for (unsigned int d = 0; d < D; ++d)
-    {
-	if (a.chars[d] == b.chars[d]) continue;
-	return (a.chars[d] < b.chars[d]);
-    }
-
-    //assert( a.ranks[0] != b.ranks[0] );
-    return (a.ranks[0] < b.ranks[0]);
-}
 
 // ****************************************************************************************************
 
