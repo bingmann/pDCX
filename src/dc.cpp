@@ -166,7 +166,7 @@ struct MergeAreasLTCmp
     {
 	return pos[v] >= endpos[v+1];
     }
-	
+
     bool operator()(int a, int b) const
     {
 	return cmp( v[pos[a]], v[pos[b]] );
@@ -225,7 +225,7 @@ struct MPI_DatatypeTemplate
     template <>						\
     MPI_Datatype MPI_DatatypeTemplate<Type>::getType()	\
     {							\
-        return MpiConst;				\
+	return MpiConst;				\
     }
 
 MAKE_MPI_DATATYPE_TEMPLATE(char, MPI_CHAR);
@@ -332,13 +332,14 @@ public:
 //static const unsigned int inDC[X] = { 1, 1, 0, 1, 0, 0, 0 };
 
     static const bool debug		= true;
-    static const bool debug_sortsample	= true;
-    static const bool debug_nameing	= true;
-    static const bool debug_recursion	= true;
+    static const bool debug_input	= false;
+    static const bool debug_sortsample	= false;
+    static const bool debug_nameing	= false;
+    static const bool debug_recursion	= false;
     static const bool debug_finalsort	= false;
 
     static const bool debug_compare	= false;
-    
+
 
     // **********************************************************************
     // * tuple types
@@ -468,7 +469,7 @@ public:
 	    MPI_Datatype typelist[2] = { getMpiDatatype(p.name), getMpiDatatype(p.index) };
 	    int 	blocklen[2] = { 1, 1 };
 	    MPI_Aint	displace[2] = { DISP(p,name), DISP(p,index) };
-	       
+
 	    MPI_Type_struct( 2, blocklen, displace, typelist, &MPI_PAIR );
 	    MPI_Type_commit( &MPI_PAIR );
 	}
@@ -480,7 +481,7 @@ public:
 	    MPI_Datatype typelist[2] = { getMpiDatatype(t.chars[0]), getMpiDatatype(t.index) };
 	    int 	blocklen[2] = { X, 1 };
 	    MPI_Aint	displace[2] = { DISP(t,chars), DISP(t,index) };
-	       
+
 	    MPI_Type_struct( 2, blocklen, displace, typelist, &MPI_TUPLE_SAMPLE );
 	    MPI_Type_commit( &MPI_TUPLE_SAMPLE );
 	}
@@ -492,7 +493,7 @@ public:
 	    MPI_Datatype typelist[3] = { getMpiDatatype(t.chars[0]), getMpiDatatype(t.ranks[0]), getMpiDatatype(t.index) };
 	    int 	blocklen[3] = { X-1, D, 1 };
 	    MPI_Aint	displace[3] = { DISP(t,chars), DISP(t,ranks), DISP(t,index) };
-	       
+
 	    MPI_Type_struct( 3, blocklen, displace, typelist, &MPI_TUPLE_NONSAMPLE );
 	    MPI_Type_commit( &MPI_TUPLE_NONSAMPLE );
 	}
@@ -614,7 +615,7 @@ public:
 
 	if (debug)
 	{
-	    std::cout << "******************** DCX ********************" << std::endl;
+	    std::cout << "******************** DCX (process " << myproc << ") ********************" << std::endl;
 
 	    std::cout << "Parameters:\n"
 		      << "  globalSize = " << globalSize << "\n"
@@ -626,9 +627,9 @@ public:
 		      << "  samplesize = " << samplesize << "\n";
 	}
 
-	DBG_ARRAY2(debug, "Input", input, localSize);
+	DBG_ARRAY2(debug_input, "Input", input, localSize);
 
-	DBG_ARRAY2(debug, "Input (extra tuples)", (input + localSize), localSizeReal - localSize);
+	DBG_ARRAY2(debug_input, "Input (extra tuples)", (input + localSize), localSizeReal - localSize);
 
 	// **********************************************************************
 	// * calculate build DC-tuple array and sort locally
@@ -867,7 +868,7 @@ public:
 		}
 		splitterpos[ nprocs ] = P.size();
 
-		DBG_ARRAY2(1, "Splitters positions", splitterpos, nprocs+1);
+		DBG_ARRAY2(debug_recursion, "Splitters positions", splitterpos, nprocs+1);
 
 		for ( int i = 0; i < nprocs; i++ )
 		{
@@ -920,7 +921,7 @@ public:
 
 		//delete [] namearray;
 
-		DBG_ARRAY(1, "Recursive localSA", rdcx.localSA);
+		DBG_ARRAY(debug_recursion, "Recursive localSA", rdcx.localSA);
 
 		uint SAsize = rdcx.localSA.size();
 		uint allSAsize[nprocs+1];
@@ -928,7 +929,7 @@ public:
 		MPI_Allgather( &SAsize, 1, MPI_UNSIGNED, allSAsize, 1, MPI_UNSIGNED, MPI_COMM_WORLD );
 
 		uint sum = 0;
-		for (unsigned int i = 0; i < nprocs; ++i)
+		for (int i = 0; i < nprocs; ++i)
 		{
 		    uint newsum = sum + allSAsize[i];
 		    allSAsize[i] = sum;
@@ -936,7 +937,7 @@ public:
 		}
 		allSAsize[nprocs] = sum;
 
-		DBG_ARRAY2(1, "allSAsize", allSAsize, nprocs+1);
+		DBG_ARRAY2(debug_recursion, "allSAsize", allSAsize, nprocs+1);
 
 		// generate array of pairs (index,rank) from localSA
 
@@ -955,8 +956,6 @@ public:
 		    P[i].index = index;
 		    P[i].name = allSAsize[myproc] + i + 1;
 		}
-
-		goto SortP;
 	    }
 	    else // use sequential suffix sorter
 	    {
@@ -1019,90 +1018,10 @@ public:
 
 		    std::swap(P, Pall);
 		}
-
-		// **********************************************************************
-		// *** redistribute pairs partitioned by localSize
-
-		if (myproc == ROOT)
+		else
 		{
-		    std::sort(P.begin(), P.end());			// sort locally by index
-
-		    DBG_ARRAY(debug_recursion, "Fixed Global Names sorted index", P);
-
-		    uint* splitterpos = new uint[nprocs+1];
-
-		    // use equidistance splitters from 0..globalSize (because indexes are fixed)
-		    splitterpos[ 0 ] = 0;
-		    Pair ptemp; ptemp.name=0;
-		    for ( int i = 1; i < nprocs; i++ ) {
-			ptemp.index = i * localStride;
-
-			typename std::vector<Pair>::const_iterator it = std::lower_bound(P.begin(), P.end(), ptemp);
-			splitterpos[i] = it - P.begin();
-		    }
-		    splitterpos[ nprocs ] = P.size();
-
-		    recvcnt[0] = splitterpos[1];
-		    recvoff[0] = 0;
-		    for ( int i = 1; i < nprocs; i++ )
-		    {
-			recvcnt[i] = splitterpos[i+1] - splitterpos[i];
-			recvoff[i] = recvoff[i-1] + recvcnt[i-1];
-			assert( recvcnt[i] >= 0 );
-		    }
-		    recvoff[nprocs] = recvoff[nprocs-1] + recvcnt[nprocs-1];
-
-		    DBG_ARRAY2(debug_recursion, "recvcnt", recvcnt, nprocs);
-		    DBG_ARRAY2(debug_recursion, "recvoff", recvoff, nprocs+1);
+		    P.clear();
 		}
-
-		MPI_Bcast( recvcnt, nprocs, MPI_INT, ROOT, MPI_COMM_WORLD );
-
-		std::vector<Pair> recvBufPair ( recvcnt[ myproc ] + D );
-		unsigned int recvBufPairSize = recvcnt[ myproc ];
-
-		MPI_Scatterv( P.data(), recvcnt, recvoff, MPI_PAIR, recvBufPair.data(), recvBufPairSize, MPI_PAIR, ROOT, MPI_COMM_WORLD );
-
-		//delete[] P;
-		P.clear();
-
-		DBG_ARRAY2(debug_recursion, "Pairs P (globally sorted by index)", recvBufPair.data(), recvBufPairSize);
-
-		// **********************************************************************
-		// *** every PE needs D additional sample suffix ranks to complete the final tuple
-
-		Pair temp[ D ];
-
-		MPI_Sendrecv( recvBufPair.data(), D, MPI_PAIR, ( myproc - 1 + nprocs ) % nprocs, MSGTAG,
-			      &temp, D, MPI_PAIR, ( myproc + 1 ) % nprocs, MSGTAG,
-			      MPI_COMM_WORLD, &status );
-
-		DBG_ARRAY2(debug_recursion, "Pairs P (extra tuples)", temp, D);
-
-		if ( myproc == nprocs - 1 )	// last processor gets sentinel tuples with maximum ranks
-		{
-		    for (unsigned int i = 0; i < D; ++i)
-		    {
-			recvBufPair[ recvBufPairSize + i ].name = INT_MAX - D + i;
-			recvBufPair[ recvBufPairSize + i ].index = recvBufPair[ recvBufPairSize - D ].index - DC[0] + X + DC[i];
-		    }
-		}
-		else	// other processors get D following tuples with indexes from the DC
-		{
-		    for (unsigned int i = 0; i < D; ++i)
-		    {
-			recvBufPair[ recvBufPairSize + i ].name = temp[i].name;
-			recvBufPair[ recvBufPairSize + i ].index = recvBufPair[ recvBufPairSize - D ].index - DC[0] + X + DC[i];
-			assert( recvBufPair[ recvBufPairSize + i ].index == temp[i].index );
-		    }
-		}
-
-		std::swap(recvBufPair, P);
-
-		DBG_ARRAY(debug_recursion, "Pairs P (globally sorted by index + extra tuples)", P);
-
-		delete[] recvcnt;
-		delete[] recvoff;
 
 	    } // end use sequential suffix sorter
 
@@ -1112,8 +1031,11 @@ public:
 	else {
 	    if (debug_recursion)
 		std::cout << "---------------------   keine  Recursion---------------- " << localSize << std::endl;
+	}
 
-	SortP:
+	// in any outcome: here P contains pairs of index and unique rank.
+
+	{
 	    // **********************************************************************
 	    // *** sample sort pairs P by index
 
@@ -1132,7 +1054,7 @@ public:
 	    Pair ptemp;
 	    ptemp.name=0;
 	    for ( int i = 1; i < nprocs; i++ ) {
-		ptemp.index = i * localStride;	// TODO: check range (maybe index doesnt start at 0)?
+		ptemp.index = i * localStride;
 
 		typename std::vector<Pair>::const_iterator it = std::lower_bound(P.begin(), P.end(), ptemp);
 		splitterpos[i] = it - P.begin();
@@ -1159,7 +1081,6 @@ public:
 
 	    MPI_Alltoallv( P.data(), sendcnt, sendoff, MPI_PAIR, recvBufPair.data(), recvcnt, recvoff, MPI_PAIR, MPI_COMM_WORLD );
 
-	    //delete[] P;
 	    P.clear();
 
 	    merge_areas(recvBufPair, recvoff, nprocs);
@@ -1175,12 +1096,14 @@ public:
 			  &temp, D, MPI_PAIR, ( myproc + 1 ) % nprocs, MSGTAG,
 			  MPI_COMM_WORLD, &status );
 
+	    DBG_ARRAY2(debug_recursion, "Pairs P (extra tuples)", temp, D);
+
 	    if ( myproc == nprocs - 1 )	// last processor gets sentinel tuples with maximum ranks
 	    {
 		for (unsigned int i = 0; i < D; ++i)
 		{
 		    recvBufPair[ recvBufPairSize + i ].name = INT_MAX - D + i;
-		    recvBufPair[ recvBufPairSize + i ].index = recvBufPair[ recvBufPairSize - D ].index + X + DC[i];
+		    recvBufPair[ recvBufPairSize + i ].index = recvBufPair[ recvBufPairSize - D ].index - DC[0] + X + DC[i];
 		}
 	    }
 	    else	// other processors get D following tuples with indexes from the DC
@@ -1188,14 +1111,10 @@ public:
 		for (unsigned int i = 0; i < D; ++i)
 		{
 		    recvBufPair[ recvBufPairSize + i ].name = temp[i].name;
-		    recvBufPair[ recvBufPairSize + i ].index = recvBufPair[ recvBufPairSize - D ].index + X + DC[i];
+		    recvBufPair[ recvBufPairSize + i ].index = recvBufPair[ recvBufPairSize - D ].index - DC[0] + X + DC[i];
 		    assert( recvBufPair[ recvBufPairSize + i ].index == temp[i].index );
 		}
 	    }
-
-	    //std::cout<<"CPU ["<<myproc<<"] nach rekursion"<<std::endl;
-
-	    //std::sort( recvBufPair.begin(), recvBufPair.end(), cmpIndexModDiv );
 
 	    std::swap(recvBufPair, P);
 
@@ -1233,11 +1152,6 @@ public:
 
 		if (DC[dp % D] == k) ++dp;
 	    }
-	}
-
-	for (unsigned int k = 0; k < X; ++k)
-	{
-	    //DBG_ARRAY(1, "S" << k, S[k]);
 	}
 
 	// **********************************************************************
@@ -1578,7 +1492,7 @@ public:
 	{
 	    MPI_Send( localSA.data(), localSA.size() , MPI_UNSIGNED, ROOT, MSGTAG , MPI_COMM_WORLD );
 	}
-	
+
 	return true;
     }
 
@@ -1693,7 +1607,7 @@ int main( int argc, char **argv )
     }
 
     {
-	pDCX<DC7Param, uint8_t> dcx;
+	pDCX<DC3Param, uint8_t> dcx;
 
 	dcx.run(argv[1]);
 
