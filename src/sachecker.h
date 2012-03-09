@@ -89,7 +89,7 @@ bool sa_checker(const std::vector<alphabet_type>& string, const std::vector<offs
 
 	val1 %= p; val2 %= p;
 	
-	if (SA[i] < 0 || SA[i] >= (offset_type)SA.size()) {
+	if ((int)SA[i] < 0 || SA[i] >= (offset_type)SA.size()) {
 	    std::cout << "Error: suffix array contents exceeds n-1.\n";
 	    return false;
 	}
