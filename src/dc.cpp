@@ -45,30 +45,6 @@
     }										\
 } while(0)
 
-template <class T1, class T2, class T3>
-void mergesort( T1* sortarray, T1* helparray, T3 left, T3 right, T3* offset, bool (*cmp)(const T2&, const T1&) )
-{
-    if ( ( right - left ) > 1 ) {
-	T3 i, j, k = offset[ left ], middle;
-	middle = ( left + right ) / 2;
-
-	mergesort( sortarray, helparray,left, middle, offset, cmp );
-	mergesort( sortarray, helparray, middle, right, offset, cmp );
-	for ( i = offset[ left ]; i < offset[ middle ]; i++ )
-	    helparray[ i ] = sortarray[ i ];
-
-	j = offset[ middle ];
-	i = offset[ left ];
-	while ( k < j && j < offset[ right ]) {
-	    if ( cmp(helparray[ i ],sortarray[ j ]) ) sortarray[ k ] = helparray[ i++ ];
-	    else sortarray[ k ] = sortarray[ j++ ];
-	    k++;
-	}
-	while ( k < j ) sortarray[ k++ ] = helparray[ i++ ];
-    }
-
-}
-
 // **********************************************************************
 // * Loser tree implementation
 
@@ -97,7 +73,7 @@ public:
 	// finishes.
 	int levelput = m_tree.size() / 2;
 	for (unsigned int i = 0; i < size; ++i)
-	    m_tree[levelput + i] = i;
+	    m_tree[levelput + i] = m_less.done(i) ? -1 : i;
 
 	int levelsize = levelput + 1;
 
@@ -112,6 +88,8 @@ public:
 	    {
 		if ( m_tree[levelget + 2*i + 1] < 0 )
 		    m_tree[levelput + i] = m_tree[levelget + 2*i];
+		else if ( m_tree[levelget + 2*i] < 0 )
+		    m_tree[levelput + i] = m_tree[levelget + 2*i + 1];
 		else if (m_less( m_tree[levelget + 2*i], m_tree[levelget + 2*i + 1] ))
 		    m_tree[levelput + i] = m_tree[levelget + 2*i];
 		else
@@ -125,13 +103,13 @@ public:
 	return m_tree[0];
     }
 
-    void replay(bool done)
+    void replay()
     {
 	int top = m_tree[0];
 
 	int p = (m_tree.size() / 2) + top;
 
-	if (done) top = -1;	// mark sequence as done
+	if (m_less.done(top)) top = -1;	// mark sequence as done
 
 	while( p > 0 )
 	{
@@ -170,6 +148,69 @@ public:
 	std::cout << "\n";
     }
 };
+
+template <typename Type, class Comparator>
+struct MergeAreasLTCmp
+{
+    std::vector<Type>& 	v;
+    std::vector<int>&	pos;
+    const int*		endpos;
+    const Comparator&	cmp;
+
+    MergeAreasLTCmp(std::vector<Type>& _v, std::vector<int>& _pos, int* _endpos, const Comparator& _cmp)
+	: v(_v), pos(_pos), endpos(_endpos), cmp(_cmp)
+    {
+    }
+
+    bool done(int v) const
+    {
+	return pos[v] >= endpos[v+1];
+    }
+	
+    bool operator()(int a, int b) const
+    {
+	return cmp( v[pos[a]], v[pos[b]] );
+    }
+};
+
+/**
+ * Merge an area of ordered sequences as received from other processors:
+ *
+ * @param v	the complete vector
+ * @param area  array of indexes to the adjacent areas first position - size arealen+1 (!)
+ * @param arealen number of areas.
+ * @param cmp	comparator
+ */
+
+template < typename Type, class Comparator >
+void merge_areas(std::vector<Type>& v, int* area, int areanum, const Comparator& cmp = std::less<Type>())
+{
+    std::vector<int> pos (&area[0], &area[areanum+1]);
+
+    MergeAreasLTCmp<Type,Comparator> ltcmp(v, pos, area, cmp);
+    LoserTree< MergeAreasLTCmp<Type,Comparator> > LT (areanum, ltcmp);
+
+    std::vector<Type> out (v.size());
+
+    int top, j = 0;
+
+    while( (top = LT.top()) >= 0 )
+    {
+	out[j++] = v[ pos[top] ];
+
+	++pos[top];
+
+	LT.replay();
+    }
+
+    std::swap(v, out);
+}
+
+template < typename Type >
+void merge_areas(std::vector<Type>& v, int* area, int areanum)
+{
+    return merge_areas(v, area, areanum, std::less<Type>());
+}
 
 // **********************************************************************
 // * MPI Datatype Templates
@@ -292,6 +333,12 @@ public:
 
     static const bool debug		= true;
     static const bool debug_sortsample	= false;
+    static const bool debug_nameing	= false;
+    static const bool debug_recursion	= false;
+    static const bool debug_finalsort	= false;
+
+    static const bool debug_compare	= false;
+    
 
     // **********************************************************************
     // * tuple types
@@ -318,18 +365,13 @@ public:
 
     };
 
-static inline
-bool cmpLessIndex( const Pair& a, const Pair& b ) {
-    return ( a.index < b.index );
-}
-
-    class TupleX
+    class TupleS
     {
     public:
 	alphabet_type	chars[X];
 	uint		index;
 
-	bool operator< (const TupleX& o) const
+	bool operator< (const TupleS& o) const
 	{
 	    for (unsigned int i = 0; i < X; ++i)
 	    {
@@ -339,7 +381,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	    return false;
 	}
 
-	bool operator== (const TupleX& o) const
+	bool operator== (const TupleS& o) const
 	{
 	    for (unsigned int i = 0; i < X; ++i)
 	    {
@@ -348,7 +390,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	    return true;
 	}
 
-	friend std::ostream& operator<< (std::ostream& os, const TupleX& t)
+	friend std::ostream& operator<< (std::ostream& os, const TupleS& t)
 	{
 	    os << "([";
 	    for (unsigned int i = 0; i < X; ++i) {
@@ -361,18 +403,13 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
     };
 
-    static inline
-    bool cmpTupleXLeq( const TupleX& a, const TupleX& b ) {
-	return ( a == b || a < b );
-    }
-
-    struct TupleSX
+    struct TupleN
     {
 	alphabet_type	chars[X-1];
 	uint		ranks[D];
 	uint		index;
 
-	friend std::ostream& operator<< (std::ostream& os, const TupleSX& t)
+	friend std::ostream& operator<< (std::ostream& os, const TupleN& t)
 	{
 	    os << "(c[";
 	    for (unsigned int i = 0; i < X-1; ++i) {
@@ -390,7 +427,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
     };
 
     template <int D>
-    static inline bool cmpTupleSXdepth(const TupleSX& a, const TupleSX& b)
+    static inline bool cmpTupleNdepth(const TupleN& a, const TupleN& b)
     {
 	for (unsigned int d = 0; d < D; ++d)
 	{
@@ -416,7 +453,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
     MPI_Datatype		MPI_PAIR;
     MPI_Datatype		MPI_TUPLE_SAMPLE;
-    MPI_Datatype		MPI_TUPLE_SX;
+    MPI_Datatype		MPI_TUPLE_NONSAMPLE;
 
     MPI_Status			status;
 
@@ -440,7 +477,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
 	// type: tuple with X chars and index
 	{
-	    TupleX 	t;
+	    TupleS 	t;
 
 	    MPI_Datatype typelist[2] = { getMpiDatatype(t.chars[0]), getMpiDatatype(t.index) };
 	    int 	blocklen[2] = { X, 1 };
@@ -452,14 +489,14 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
 	// type: tuple with X-1 chars, D ranks and index
 	{
-	    TupleSX 	t;
+	    TupleN 	t;
 
 	    MPI_Datatype typelist[3] = { getMpiDatatype(t.chars[0]), getMpiDatatype(t.ranks[0]), getMpiDatatype(t.index) };
 	    int 	blocklen[3] = { X-1, D, 1 };
 	    MPI_Aint	displace[3] = { DISP(t,chars), DISP(t,ranks), DISP(t,index) };
 	       
-	    MPI_Type_struct( 3, blocklen, displace, typelist, &MPI_TUPLE_SX );
-	    MPI_Type_commit( &MPI_TUPLE_SX );
+	    MPI_Type_struct( 3, blocklen, displace, typelist, &MPI_TUPLE_NONSAMPLE );
+	    MPI_Type_commit( &MPI_TUPLE_NONSAMPLE );
 	}
 
 #undef DISP
@@ -469,7 +506,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
     {
 	MPI_Type_free( &MPI_TUPLE_SAMPLE );
 	MPI_Type_free( &MPI_PAIR );
-	MPI_Type_free( &MPI_TUPLE_SX );
+	MPI_Type_free( &MPI_TUPLE_NONSAMPLE );
     }
 
     pDCX()
@@ -486,13 +523,14 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
     // *** MPI variables
 
     static inline
-    bool cmpTupleSXCompare(const TupleSX& t1, const TupleSX& t2)
+    bool cmpTupleNCompare(const TupleN& t1, const TupleN& t2)
     {
 	unsigned int v1 = t1.index % X, v2 = t2.index % X;
 
 	const int* deprank = DCParam::cmpDepthRanks[v1][v2];
 
-	std::cout << "cmp " << v1 << "(" << t1.index << ") ? " << v2 << "(" << t2.index << ") - depth " << deprank[0] << "\n";
+	if (debug_compare)
+	    std::cout << "cmp " << v1 << "(" << t1.index << ") ? " << v2 << "(" << t2.index << ") - depth " << deprank[0] << "\n";
 
 	for (int d = 0; d < deprank[0]; ++d)
 	{
@@ -500,22 +538,28 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	    return (t1.chars[d] < t2.chars[d]);
 	}
 
-	std::cout << "break tie using ranks " << deprank[1] << " - " << deprank[2] << " = " << t1.ranks[ deprank[1] ] << " - " << t2.ranks[ deprank[2] ] << "\n";
+	if (debug_compare)
+	    std::cout << "break tie using ranks " << deprank[1] << " - " << deprank[2] << " = " << t1.ranks[ deprank[1] ] << " - " << t2.ranks[ deprank[2] ] << "\n";
 
 	//assert (t1.ranks[ deprank[1] ] != t2.ranks[ deprank[2] ]);
 
 	return (t1.ranks[ deprank[1] ] < t2.ranks[ deprank[2] ]);
     }
 
-    struct TupleSXMerge
+    struct TupleNMerge
     {
-	const std::vector<TupleSX>*	 m_S;
+	const std::vector<TupleN>*	 m_S;
 
 	std::vector<unsigned int>	 m_ptr;
 
-	TupleSXMerge(const std::vector<TupleSX>* S)
+	TupleNMerge(const std::vector<TupleN>* S)
 	    : m_S(S), m_ptr(X, 0)
 	{
+	}
+
+	inline bool done(int v) const
+	{
+	    return (m_ptr[v] >= m_S[v].size());
 	}
 
 	inline bool operator()(int v1, int v2) const
@@ -524,13 +568,14 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
 	    const int* deprank = DCParam::cmpDepthRanks[v1][v2];
 
-	    const TupleSX& t1 = m_S[v1][ m_ptr[v1] ];
-	    const TupleSX& t2 = m_S[v2][ m_ptr[v2] ];
+	    const TupleN& t1 = m_S[v1][ m_ptr[v1] ];
+	    const TupleN& t2 = m_S[v2][ m_ptr[v2] ];
 
 	    assert( t1.index % X == (unsigned int)v1 );
 	    assert( t2.index % X == (unsigned int)v2 );
 
-	    std::cout << "cmp " << v1 << "(" << t1.index << ") ? " << v2 << "(" << t2.index << ") - depth " << deprank[0] << "\n";
+	    if (debug_compare)
+		std::cout << "cmp " << v1 << "(" << t1.index << ") ? " << v2 << "(" << t2.index << ") - depth " << deprank[0] << "\n";
 
 	    for (int d = 0; d < deprank[0]; ++d)
 	    {
@@ -538,7 +583,8 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 		return (t1.chars[d] < t2.chars[d]);
 	    }
 
-	    std::cout << "break tie using ranks " << deprank[1] << " - " << deprank[2] << " = " << t1.ranks[ deprank[1] ] << " - " << t2.ranks[ deprank[2] ] << "\n";
+	    if (debug_compare)
+		std::cout << "break tie using ranks " << deprank[1] << " - " << deprank[2] << " = " << t1.ranks[ deprank[1] ] << " - " << t2.ranks[ deprank[2] ] << "\n";
 
 	    assert (t1.ranks[ deprank[1] ] != t2.ranks[ deprank[2] ]);
 
@@ -546,7 +592,8 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	}
     };
 
-    uint* dcx( alphabet_type* input, uint globalSize, uint localStride )
+
+    bool dcx( alphabet_type* input, uint globalSize, uint localStride )
     {
 	uint samplesize = (uint)sqrt(localStride * D / X / nprocs) * samplefactor;
 
@@ -580,7 +627,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	// **********************************************************************
 	// * calculate build DC-tuple array and sort locally
 
-	std::vector<TupleX> R (D * M);			// create D * M tuples which might include up to D-1 dummies
+	std::vector<TupleS> R (D * M);			// create D * M tuples which might include up to D-1 dummies
 
 	uint j = 0;
 	for (uint i = 0; i < localSize; i += X)
@@ -611,15 +658,15 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	    // * select equidistance samples and redistribute sorted DC-tuples
 
 	    // select samples
-	    TupleX* samplebuf = new TupleX[ samplesize ];
+	    TupleS* samplebuf = new TupleS[ samplesize ];
 
 	    double dist = (double) R.size() / samplesize;
 	    for ( uint i = 0; i < samplesize; i++ )
 		samplebuf[i] = R[ int( i * dist ) ];
 
 	    // root proc collects all samples
-	    TupleX* samplebufall;
-	    if (myproc == ROOT) samplebufall = new TupleX[ nprocs * samplesize ];
+	    TupleS* samplebufall;
+	    if (myproc == ROOT) samplebufall = new TupleS[ nprocs * samplesize ];
 
 	    MPI_Gather( samplebuf, samplesize, MPI_TUPLE_SAMPLE,
 			samplebufall, samplesize, MPI_TUPLE_SAMPLE, ROOT, MPI_COMM_WORLD );
@@ -628,7 +675,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
 	    // root proc sorts samples as splitters
 
-	    TupleX* splitterbuf = new TupleX[ nprocs ];
+	    TupleS* splitterbuf = new TupleS[ nprocs ];
 
 	    if ( myproc == ROOT )
 	    {
@@ -655,7 +702,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	    splitterpos[0] = 0;
 	    for ( int i = 1; i < nprocs; i++ )
 	    {
-		typename std::vector<TupleX>::const_iterator it = std::lower_bound(R.begin(), R.end(), splitterbuf[i]);
+		typename std::vector<TupleS>::const_iterator it = std::lower_bound(R.begin(), R.end(), splitterbuf[i]);
 
 		splitterpos[i] = it - R.begin();
 	    }
@@ -692,7 +739,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 		recvoff[i] = recvoff[i-1] + recvcnt[i-1];
 	    }
 
-	    std::vector<TupleX> recvbuf ( recvoff[ nprocs ] );
+	    std::vector<TupleS> recvbuf ( recvoff[ nprocs ] );
 
 	    MPI_Alltoallv( R.data(), sendcnt, sendoff, MPI_TUPLE_SAMPLE,
 			   recvbuf.data(), recvcnt, recvoff, MPI_TUPLE_SAMPLE, MPI_COMM_WORLD );
@@ -703,21 +750,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	    delete [] recvcnt;
 	    delete [] sendoff;
 
-	    if ( R.size() )
-	    {
-		/** merge */
-		TupleX * helparray4 = new TupleX[ R.size() ];
-
-		// binary merge sort!
-		mergesort( R.data(), helparray4, 0, nprocs, recvoff, cmpTupleXLeq );
-
-		// really no need for all this sorting: just name using loser tree!
-
-		delete[] helparray4;
-	    }
-	    else {
-		std::cout << myproc << " hat nichts bekommen" << std::endl;
-	    }
+	    merge_areas(R, recvoff, nprocs);
 	}
 	// }}} end Sample sort of array R
 
@@ -735,7 +768,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	{
 	    // naming with local names
 
-	    TupleX temp;	// get last tuple from previous process as basis for name comparison (cyclicly)
+	    TupleS temp;	// get last tuple from previous process as basis for name comparison (cyclicly)
 	    MPI_Sendrecv( &(R[R.size()-1]), 1, MPI_TUPLE_SAMPLE, (myproc + 1) % nprocs, MSGTAG,
 			  &temp, 1, MPI_TUPLE_SAMPLE, (myproc - 1 + nprocs) % nprocs, MSGTAG,
 			  MPI_COMM_WORLD, &status );
@@ -744,7 +777,8 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	    for ( uint i = 0; i < R.size(); i++ ) {
 		if ( !( R[i] == temp ) ) {
 		    name++;
-		    std::cout << "Giving name " << name << " to " << R[i] << "\n";
+		    if (debug_nameing)
+			std::cout << "Giving name " << name << " to " << R[i] << "\n";
 		    temp = R[i];
 		}
 		P[i].name = name;
@@ -752,7 +786,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	    }
 	    R.clear();		// Why?: because it is easier to recreate the tuples later on
 
-	    DBG_ARRAY(1, "Local Names", P);
+	    DBG_ARRAY(debug_nameing, "Local Names", P);
 
 	    // renaming with global names: calculate using prefix sum
 
@@ -763,15 +797,19 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	    for ( uint i = 0; i < P.size(); i++ )
 		P[i].name += (namesglob - name);
 
-	    DBG_ARRAY(1, "Global Names", P);
+	    DBG_ARRAY(debug_nameing, "Global Names", P);
 
 	    // determine whether recursion is necessary: last proc checks its highest name
 
 	    if (myproc == nprocs - 1)
 	    {
-		std::cout << "last name: " << P.back().name << " -? " << D * globalMultipleOfX << "\n";
+		if (debug_nameing)
+		    std::cout << "last name: " << P.back().name << " -? " << D * globalMultipleOfX << "\n";
+
 		recursion = (P.back().name != D * globalMultipleOfX);
-		std::cout << "recursion: " << recursion << "\n";
+
+		if (debug_nameing)
+		    std::cout << "recursion: " << recursion << "\n";
 	    }
 
 	    MPI_Bcast( &recursion, 1, MPI_INT, nprocs - 1, MPI_COMM_WORLD );
@@ -779,7 +817,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
 	if ( recursion )
 	{
-	    if ( myproc == ROOT )
+	    if (debug_recursion)
 		std::cout << "---------------------   RECURSION ---------------- " << localSize << std::endl;
 
 	    uint namesGlobalSize = D * globalMultipleOfX;
@@ -792,7 +830,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
 		std::sort(P.begin(), P.end(), Pair::cmpIndexModDiv);		// sort locally
 
-		DBG_ARRAY(1, "Global Names sorted cmpModDiv", P);
+		DBG_ARRAY(debug_recursion, "Global Names sorted cmpModDiv", P);
 
 		uint* splitterpos = new uint[nprocs+1];
 		int* sendcnt = new int[nprocs];
@@ -811,7 +849,9 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
 		    unsigned int divM = ptemp.index / globalMultipleOfX;
 		    ptemp.index = DC[divM] + X * (ptemp.index - divM * globalMultipleOfX);
-		    std::cout << "splitter: " << ptemp.index << " = " << x << " - " << divM << "\n";
+
+		    if (debug_recursion)
+			std::cout << "splitter: " << ptemp.index << " = " << x << " - " << divM << "\n";
 
 		    typename std::vector<Pair>::const_iterator it = std::lower_bound(P.begin(), P.end(), ptemp, Pair::cmpIndexModDiv);
 		    splitterpos[i] = it - P.begin();
@@ -841,9 +881,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 		//delete[] P;
 		P.clear();
 
-		Pair* helparray2 = new Pair[ recvBufPairSize ];
-		mergesort( recvBufPair.data(), helparray2, 0, nprocs, recvoff, Pair::cmpIndexModDiv );
-		delete[] helparray2;
+		merge_areas(recvBufPair, recvoff, nprocs);
 
 		// TODO: merge and reduce at once
 
@@ -851,7 +889,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 		for (unsigned int i = 0; i < recvBufPairSize; ++i)
 		    namearray[i] = recvBufPair[i].index;
 
-		DBG_ARRAY2(1, "Pairs P (globally sorted by indexModDiv)", recvBufPair.data(), recvBufPairSize);
+		DBG_ARRAY2(debug_recursion, "Pairs P (globally sorted by indexModDiv)", recvBufPair.data(), recvBufPairSize);
 
 		// }}} end Sample sort of array P
 
@@ -896,13 +934,13 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
 		    std::sort(Pall.begin(), Pall.end(), Pair::cmpIndexModDiv);		// sort locally
 
-		    DBG_ARRAY(1, "Global Names sorted cmpModDiv", Pall);
+		    DBG_ARRAY(debug_recursion, "Global Names sorted cmpModDiv", Pall);
 
 		    uint* namearray = new uint[ Pall.size() ];
 		    for (unsigned int i = 0; i < Pall.size(); ++i)
 			namearray[i] = Pall[i].name;
 
-		    DBG_ARRAY2(1, "Recursion input", namearray, Pall.size());
+		    DBG_ARRAY2(debug_recursion, "Recursion input", namearray, Pall.size());
 
 		    int* rSA = new int [ Pall.size() ];
 
@@ -910,7 +948,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
 		    delete [] namearray;
 
-		    DBG_ARRAY2(1, "Recursive SA", rSA, Pall.size());
+		    DBG_ARRAY2(debug_recursion, "Recursive SA", rSA, Pall.size());
 
 		    // generate rank array - same as updating pair array with correct names
 		    for (unsigned int i = 0; i < Pall.size(); ++i)
@@ -918,7 +956,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 			Pall[ rSA[i] ].name = i+1;
 		    }
 
-		    DBG_ARRAY(1, "Fixed Global Names sorted cmpModDiv", Pall);
+		    DBG_ARRAY(debug_recursion, "Fixed Global Names sorted cmpModDiv", Pall);
 
 		    std::swap(P, Pall);
 		}
@@ -930,7 +968,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 		{
 		    std::sort(P.begin(), P.end());			// sort locally by index
 
-		    DBG_ARRAY(1, "Fixed Global Names sorted index", P);
+		    DBG_ARRAY(debug_recursion, "Fixed Global Names sorted index", P);
 		}
 
 		if (myproc == ROOT)
@@ -958,8 +996,8 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 		    }
 		    recvoff[nprocs] = recvoff[nprocs-1] + recvcnt[nprocs-1];
 
-		    DBG_ARRAY2(1, "recvcnt", recvcnt, nprocs);
-		    DBG_ARRAY2(1, "recvoff", recvoff, nprocs+1);
+		    DBG_ARRAY2(debug_recursion, "recvcnt", recvcnt, nprocs);
+		    DBG_ARRAY2(debug_recursion, "recvoff", recvoff, nprocs+1);
 		}
 
 		MPI_Bcast( recvcnt, nprocs, MPI_INT, ROOT, MPI_COMM_WORLD );
@@ -972,7 +1010,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 		//delete[] P;
 		P.clear();
 
-		DBG_ARRAY2(1, "Pairs P (globally sorted by index)", recvBufPair.data(), recvBufPairSize);
+		DBG_ARRAY2(debug_recursion, "Pairs P (globally sorted by index)", recvBufPair.data(), recvBufPairSize);
 
 		// **********************************************************************
 		// *** every PE needs D additional sample suffix ranks to complete the final tuple
@@ -983,7 +1021,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 			      &temp, D, MPI_PAIR, ( myproc + 1 ) % nprocs, MSGTAG,
 			      MPI_COMM_WORLD, &status );
 
-		DBG_ARRAY2(1, "Pairs P (extra tuples)", temp, D);
+		DBG_ARRAY2(debug_recursion, "Pairs P (extra tuples)", temp, D);
 
 		if ( myproc == nprocs - 1 )	// last processor gets sentinel tuples with maximum ranks
 		{
@@ -1009,18 +1047,18 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
 		std::swap(recvBufPair, P);
 
-		DBG_ARRAY(1, "Pairs P (globally sorted by index + extra tuples)", P);
+		DBG_ARRAY(debug_recursion, "Pairs P (globally sorted by index + extra tuples)", P);
 
 		delete[] recvcnt;
 		delete[] recvoff;
 
 	    } // end use sequential suffix sorter
 
-	    if ( myproc == ROOT )
+	    if (debug_recursion)
 		std::cout << "---------------------   END  RECURSION  --------------- " << std::endl;
 	}
 	else {
-	    if ( myproc == ROOT )
+	    if (debug_recursion)
 		std::cout << "---------------------   keine  Recursion---------------- " << localSize << std::endl;
 
 	    // **********************************************************************
@@ -1028,7 +1066,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
 	    std::sort( P.begin(), P.end() );
 
-	    DBG_ARRAY(1, "Pairs P (sorted by index)", P);
+	    DBG_ARRAY(debug_recursion, "Pairs P (sorted by index)", P);
 
 	    uint* splitterpos = new uint[nprocs+1];
 	    int* sendcnt = new int[nprocs];
@@ -1071,12 +1109,9 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	    //delete[] P;
 	    P.clear();
 
-	    Pair* helparray2 = new Pair[ recvBufPairSize ];
-	    mergesort( recvBufPair.data(), helparray2, 0, nprocs, recvoff, cmpLessIndex );
-	    delete[] helparray2;
+	    merge_areas(recvBufPair, recvoff, nprocs);
 
-
-	    DBG_ARRAY2(1, "Pairs P (globally sorted by index)", recvBufPair.data(), recvBufPairSize);
+	    DBG_ARRAY2(debug_recursion, "Pairs P (globally sorted by index)", recvBufPair.data(), recvBufPairSize);
 
 	    // **********************************************************************
 	    // *** every PE needs D additional sample suffix ranks to complete the final tuple
@@ -1111,7 +1146,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
 	    std::swap(recvBufPair, P);
 
-	    DBG_ARRAY(1, "Pairs P (globally sorted by index + extra tuples)", P);
+	    DBG_ARRAY(debug_recursion, "Pairs P (globally sorted by index + extra tuples)", P);
 
 	    delete[] sendcnt;
 	    delete[] sendoff;
@@ -1124,7 +1159,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	// **********************************************************************
 	// *** Generate tuple arrays of samples and non-samples
 
-	std::vector<TupleSX> S [X];
+	std::vector<TupleN> S [X];
 
 	for (unsigned int k = 0; k < X; ++k)
 	    S[k].resize(M);
@@ -1157,12 +1192,12 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	{
 	    for (unsigned int k = 0; k < X; ++k)
 	    {
-		std::sort(S[k].begin(), S[k].end(), cmpTupleSXdepth<6>);	// TODO: sort less
+		std::sort(S[k].begin(), S[k].end(), cmpTupleNdepth<6>);	// TODO: sort less
 	    }
 
 	    // select equidistant samples
 
-	    TupleSX* samplebuf = new TupleSX[ X * samplesize ];
+	    TupleN* samplebuf = new TupleN[ X * samplesize ];
 
 	    double dist = ( double ) M / samplesize;
 	    for ( uint i = 0, j = 0; i < samplesize; i++ )
@@ -1174,34 +1209,34 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	    }
 
 	    // root proc collects all samples
-	    TupleSX* samplebufall;
-	    if (myproc == ROOT) samplebufall = new TupleSX[ nprocs * X * samplesize ];
+	    TupleN* samplebufall;
+	    if (myproc == ROOT) samplebufall = new TupleN[ nprocs * X * samplesize ];
 
-	    MPI_Gather( samplebuf, X * samplesize, MPI_TUPLE_SX, samplebufall, X * samplesize, MPI_TUPLE_SX, ROOT, MPI_COMM_WORLD );
+	    MPI_Gather( samplebuf, X * samplesize, MPI_TUPLE_NONSAMPLE, samplebufall, X * samplesize, MPI_TUPLE_NONSAMPLE, ROOT, MPI_COMM_WORLD );
 
 	    delete[] samplebuf;
 
 	    // root proc sorts samples as splitters
 
-	    TupleSX* splitterbuf = new TupleSX[ nprocs ];
+	    TupleN* splitterbuf = new TupleN[ nprocs ];
 
 	    if ( myproc == ROOT )
 	    {
-		std::sort( samplebufall, samplebufall + nprocs * X * samplesize, cmpTupleSXCompare );
+		std::sort( samplebufall, samplebufall + nprocs * X * samplesize, cmpTupleNCompare );
 
-		DBG_ARRAY2(1, "Sample splitters", samplebufall, nprocs * X * samplesize);
+		DBG_ARRAY2(debug_finalsort, "Sample splitters", samplebufall, nprocs * X * samplesize);
 
 		for ( int i = 0; i < nprocs; i++ )		// pick splitters
 		    splitterbuf[i] = samplebufall[ i * X * samplesize ];
 
-		DBG_ARRAY2(1, "Selected splitters", splitterbuf, nprocs);
+		DBG_ARRAY2(debug_finalsort, "Selected splitters", splitterbuf, nprocs);
 
 		delete[] samplebufall;
 	    }
 
 	    // distribute splitters
 
-	    MPI_Bcast( splitterbuf, nprocs, MPI_TUPLE_SX, ROOT, MPI_COMM_WORLD );
+	    MPI_Bcast( splitterbuf, nprocs, MPI_TUPLE_NONSAMPLE, ROOT, MPI_COMM_WORLD );
 
 	    // find nearest splitters in each of the locally sorted tuple list
 
@@ -1214,7 +1249,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 		splitterpos[k][0] = 0;
 		for ( int i = 1; i < nprocs; i++ )
 		{
-		    typename std::vector<TupleSX>::const_iterator it = std::lower_bound(S[k].begin(), S[k].end(), splitterbuf[i], cmpTupleSXCompare );
+		    typename std::vector<TupleN>::const_iterator it = std::lower_bound(S[k].begin(), S[k].end(), splitterbuf[i], cmpTupleNCompare );
 
 		    splitterpos[k][i] = it - S[k].begin();
 		}
@@ -1223,7 +1258,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
 	    for (unsigned int k = 0; k < X; ++k)
 	    {
-		DBG_ARRAY2(1, "Splitters S." << k, splitterpos[k], nprocs+1);
+		DBG_ARRAY2(debug_finalsort, "Splitters S." << k, splitterpos[k], nprocs+1);
 	    }
 
 	    delete [] splitterbuf;
@@ -1264,7 +1299,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 		recvoff[k] = new int[ nprocs + 1 ];
 
 		sendoff[k][ 0 ] = recvoff[k][ 0 ] = 0;
-		for ( int i = 1; i < nprocs + 1; i++ )
+		for ( int i = 1; i <= nprocs; i++ )
 		{
 		    sendoff[k][i] = sendoff[k][i-1] + sendcnt[k][i-1];
 		    recvoff[k][i] = recvoff[k][i-1] + recvcnt[k][i-1];
@@ -1273,9 +1308,9 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 		    assert(recvoff[k][i] >= 0);
 		}
 
-		std::vector<TupleSX> recvbuf ( recvoff[k][ nprocs ] );
+		std::vector<TupleN> recvbuf ( recvoff[k][ nprocs ] );
 
-		MPI_Alltoallv( S[k].data(), sendcnt[k], sendoff[k], MPI_TUPLE_SX, recvbuf.data(), recvcnt[k], recvoff[k], MPI_TUPLE_SX, MPI_COMM_WORLD );
+		MPI_Alltoallv( S[k].data(), sendcnt[k], sendoff[k], MPI_TUPLE_NONSAMPLE, recvbuf.data(), recvcnt[k], recvoff[k], MPI_TUPLE_NONSAMPLE, MPI_COMM_WORLD );
 
 		std::swap(S[k], recvbuf);
 
@@ -1292,25 +1327,31 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	    {
 		if ( S[k].size() )
 		{
-		    /** merge */
-		    TupleSX * helparray4 = new TupleSX[ S[k].size() ];
+		    //TupleN * helparray4 = new TupleN[ S[k].size() ];
 
 		    // binary merge sort!
-		    mergesort( S[k].data(), helparray4, 0, nprocs, recvoff[k], cmpTupleSXdepth<6> );
+		    //mergesort( S[k].data(), helparray4, 0, nprocs, recvoff[k], cmpTupleNdepth<6> );
+
+		DBG_ARRAY(debug_finalsort, "Before S" << k, S[k]);
+
+		merge_areas(S[k], recvoff[k], nprocs, cmpTupleNdepth<6>);
+
+		DBG_ARRAY(debug_finalsort, "After S" << k, S[k]);
+
 		}
 	    }
 
 	    for (unsigned int k = 0; k < X; ++k)
 	    {
-		DBG_ARRAY(1, "After samplesort S" << k, S[k]);
+		DBG_ARRAY(debug_finalsort, "After samplesort S" << k, S[k]);
 	    }
 
-	    std::vector<TupleSX> suffixarray (totalsize);
+	    std::vector<TupleN> suffixarray (totalsize);
 	    localSA.resize( totalsize );
 	    int j = 0;
 
-	    TupleSXMerge tuplecmp(S);
-	    LoserTree<TupleSXMerge> LT(X, tuplecmp);
+	    TupleNMerge tuplecmp(S);
+	    LoserTree<TupleNMerge> LT(X, tuplecmp);
 
 	    int top;
 
@@ -1319,19 +1360,22 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 		suffixarray[j] = S[top][ tuplecmp.m_ptr[top] ];
 		localSA[j] = suffixarray[j].index;
 
-		std::cout << "Winning tuple: " << suffixarray[j] << "\n";
+		if (debug_finalsort)
+		    std::cout << "Winning tuple: " << suffixarray[j] << "\n";
 
 		if (suffixarray[j].index < globalSize) ++j;
 
 		tuplecmp.m_ptr[top]++;
 
-		LT.replay( tuplecmp.m_ptr[top] >= S[top].size() );
+		LT.replay();
 	    }
 
-	    DBG_ARRAY2(1, "Suffixarray merged", suffixarray, j);
+	    DBG_ARRAY2(debug_finalsort, "Suffixarray merged", suffixarray, j);
 
 	    localSA.resize(j);
 	}
+
+	return true;
     }
 
     std::vector<uint>   localSA;
@@ -1475,7 +1519,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
 		ssize_t wb = write(fd, buffer, allSAsize[p] * sizeof(uint));
 
-		if (wb != allSAsize[p] * sizeof(uint)) {
+		if ((uint)wb != allSAsize[p] * sizeof(uint)) {
 		    std::cout << "Error writing to file: " << strerror(errno) << std::endl;
 		    return false;
 		}
@@ -1494,6 +1538,8 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	{
 	    MPI_Send( localSA.data(), localSA.size() , MPI_UNSIGNED, ROOT, MSGTAG , MPI_COMM_WORLD );
 	}
+	
+	return true;
     }
 
     bool checkSAlocal(const char* filename)
@@ -1534,7 +1580,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 	    for ( int i = 1; i <= nprocs; i++ ) {
 		recvoff[i] = recvoff[i-1] + recvcnt[i-1];
 	    }
-	    assert( recvoff[nprocs] == globalSize );
+	    assert( recvoff[nprocs] == (int)globalSize );
 	}
 
 	std::vector<uint> gSA;
@@ -1579,6 +1625,7 @@ bool cmpLessIndex( const Pair& a, const Pair& b ) {
 
 	    assert( sachecker::sa_checker(string, gSA) );
 	}
+	return true;
     }
 };
 
