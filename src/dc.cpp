@@ -1,9 +1,13 @@
-/************************************************************************************
- *      Program:    pDC3
- *      Author:     Fabian Kulla
- *      Mail:       @
- *      Description: parallel suffix array construction
-**************************************************************************************/
+/**
+ *
+ * pDCX
+ *
+ * MPI-distributed and parallel suffix sorter using difference cover.
+ *
+ * Written by Timo Bingmann in 2012 loosely based on the previous work
+ * by Fabian Kulla in 2006.
+ *
+ */
 
 #include <mpi.h>
 
@@ -313,6 +317,32 @@ const int DC13Param::cmpDepthRanks[13][13][3] =
     { { 1,0,1 }, { 2,1,1 }, { 1,0,0 }, {10,3,2 }, {10,3,2 }, { 4,2,0 }, {10,3,3 }, { 2,1,0 }, { 1,0,0 }, { 4,2,1 }, { 4,2,1 }, { 2,1,0 }, { 1,0,0 } },
 };
 
+template<typename Type>
+std::string strC(const Type& t)
+{
+    std::ostringstream os;
+    os << t;
+    return os.str();
+}
+
+template<>
+std::string strC(const char& c)
+{
+    std::ostringstream os;
+    if (isprint(c) && !isspace(c)) os << (char)c;
+    else os << (int)c;
+    return os.str();
+}
+
+template<>
+std::string strC(const unsigned char& c)
+{
+    std::ostringstream os;
+    if (isprint(c) && !isspace(c)) os << (char)c;
+    else os << (int)c;
+    return os.str();
+}
+
 template <typename DCParam, typename alphabet_type>
 class pDCX
 {
@@ -340,17 +370,26 @@ public:
 
     static const bool debug_compare	= false;
 
+    static const bool debug_checker1	= false;
+    static const bool debug_checker2	= false;
+
+    static const bool debug_output	= false;
 
     // **********************************************************************
     // * tuple types
 
     class Pair {
     public:
-	uint		name;
 	uint		index;
+	uint		name;
 
 	bool operator< ( const Pair& a ) const {
-	    return index < a.index;
+	    return (index < a.index);
+	}
+
+	static inline
+	bool cmpName( const Pair& a, const Pair& b ) {
+	    return (a.name < b.name);
 	}
 
 	static inline
@@ -361,7 +400,23 @@ public:
 
 	friend std::ostream& operator<< (std::ostream& os, const Pair& p)
 	{
-	    return (os << "(" << p.name << "," << p.index << ")");
+	    return (os << "(" << p.index << "," << p.name << ")");
+	}
+    };
+
+    class Triple {
+    public:
+	uint		rank1;
+	uint		rank2;
+	alphabet_type	char1;
+
+	bool operator< ( const Triple& a ) const {
+	    return (rank1 < a.rank1);
+	}
+
+	friend std::ostream& operator<< (std::ostream& os, const Triple& p)
+	{
+	    return (os << "(" << p.rank1 << "," << p.rank2 << "," << strC(p.char1) << ")");
 	}
     };
 
@@ -395,7 +450,7 @@ public:
 	    os << "([";
 	    for (unsigned int i = 0; i < X; ++i) {
 		if (i != 0) os << " ";
-		os << t.chars[i];
+		os << strC(t.chars[i]);
 	    }
 	    os << "]," << t.index << ")";
 	    return os;
@@ -413,7 +468,7 @@ public:
 	    os << "(c[";
 	    for (unsigned int i = 0; i < X-1; ++i) {
 		if (i != 0) os << " ";
-		os << t.chars[i];
+		os << strC(t.chars[i]);
 	    }
 	    os << "],r[";
 	    for (unsigned int i = 0; i < D; ++i) {
@@ -425,10 +480,10 @@ public:
 	}
     };
 
-    template <int D>
+    template <int Depth>
     static inline bool cmpTupleNdepth(const TupleN& a, const TupleN& b)
     {
-	for (unsigned int d = 0; d < D; ++d)
+	for (unsigned int d = 0; d < Depth; ++d)
 	{
 	    if (a.chars[d] == b.chars[d]) continue;
 	    return (a.chars[d] < b.chars[d]);
@@ -451,6 +506,7 @@ public:
 
 
     MPI_Datatype		MPI_PAIR;
+    MPI_Datatype		MPI_TRIPLE;
     MPI_Datatype		MPI_TUPLE_SAMPLE;
     MPI_Datatype		MPI_TUPLE_NONSAMPLE;
 
@@ -472,6 +528,18 @@ public:
 
 	    MPI_Type_struct( 2, blocklen, displace, typelist, &MPI_PAIR );
 	    MPI_Type_commit( &MPI_PAIR );
+	}
+
+	// type: triple of 2 indexes + 1 char
+	{
+	    Triple	t;
+
+	    MPI_Datatype typelist[3] = { getMpiDatatype(t.rank1), getMpiDatatype(t.rank2), getMpiDatatype(t.char1) };
+	    int 	blocklen[3] = { 1, 1, 1 };
+	    MPI_Aint	displace[3] = { DISP(t,rank1), DISP(t,rank2), DISP(t,char1) };
+
+	    MPI_Type_struct( 3, blocklen, displace, typelist, &MPI_TRIPLE );
+	    MPI_Type_commit( &MPI_TRIPLE );
 	}
 
 	// type: tuple with X chars and index
@@ -503,8 +571,9 @@ public:
 
     void deinit_mpi_datatypes()
     {
-	MPI_Type_free( &MPI_TUPLE_SAMPLE );
 	MPI_Type_free( &MPI_PAIR );
+	MPI_Type_free( &MPI_TRIPLE );
+	MPI_Type_free( &MPI_TUPLE_SAMPLE );
 	MPI_Type_free( &MPI_TUPLE_NONSAMPLE );
     }
 
@@ -1159,7 +1228,7 @@ public:
 	{
 	    for (unsigned int k = 0; k < X; ++k)
 	    {
-		std::sort(S[k].begin(), S[k].end(), cmpTupleNdepth<6>);	// TODO: sort less
+		std::sort(S[k].begin(), S[k].end(), cmpTupleNdepth<X-1>);	// TODO: sort less
 	    }
 
 	    // select equidistant samples
@@ -1298,7 +1367,7 @@ public:
 	    {
 		if ( S[k].size() )
 		{
-		    merge_areas(S[k], recvoff[k], nprocs, cmpTupleNdepth<6>);
+		    merge_areas(S[k], recvoff[k], nprocs, cmpTupleNdepth<X-1>);
 
 		    delete [] recvoff[k];
 		}
@@ -1343,14 +1412,18 @@ public:
 	return true;
     }
 
-    std::vector<uint>   localSA;
+    uint			globalSize;
+
+    uint			localStride;
+
+    std::vector<uint>   	localSA;
+
+    std::vector<uint8_t>	localInput;
 
     bool run(const char* filename)
     {
 	// **********************************************************************
 	// * Read input file size
-
-	uint globalSize;
 
 	if (myproc == ROOT)
 	{
@@ -1371,8 +1444,8 @@ public:
 	// **********************************************************************
 	// * Calculate local input size (= general stride)
 
-	uint localStride = ( globalSize + nprocs - 1 ) / nprocs;	// divide by processors rounding up
-	localStride += X - localStride % X;				// round up to nearest multiple of X
+	localStride = ( globalSize + nprocs - 1 ) / nprocs;	// divide by processors rounding up
+	localStride += X - localStride % X;			// round up to nearest multiple of X
 
 	assert( localStride * nprocs >= globalSize );
 
@@ -1385,7 +1458,7 @@ public:
 	// * Read input file and send to other processors - with an overlap of (X-1) characters for the final tuples
 
 	const int overlap = X-1;
-	alphabet_type* input = new alphabet_type[ localStride + overlap ];
+	localInput.resize( localStride + overlap );
 
 	assert( sizeof(alphabet_type) == 1 );
 
@@ -1402,8 +1475,8 @@ public:
 
 		std::cout << "Read for process " << p << " from pos " << p * localStride << " of length " << readsize << std::endl;
 
-		infile.read( (char*)input, readsize );
-		MPI_Send( input, readsize, MPI_CHAR, p, MSGTAG, MPI_COMM_WORLD );
+		infile.read( (char*)localInput.data(), readsize );
+		MPI_Send( localInput.data(), readsize, MPI_CHAR, p, MSGTAG, MPI_COMM_WORLD );
 	    }
 
 	    if (!infile.good()) {
@@ -1416,7 +1489,7 @@ public:
 	    std::cout << "Read for process 0 from pos 0 of length " << localStride + overlap << std::endl;
 
 	    infile.seekg( 0, std::ios::beg );
-	    infile.read( (char*)input, localStride + overlap );
+	    infile.read( (char*)localInput.data(), localStride + overlap );
 
 	    if (!infile.good()) {
 		perror("Error reading file.");
@@ -1425,7 +1498,16 @@ public:
 	}
 	else // not ROOT: receive data
 	{
-	    MPI_Recv( input, localStride + overlap, MPI_CHAR, ROOT, MSGTAG, MPI_COMM_WORLD, &status );
+	    MPI_Recv( localInput.data(), localStride + overlap, MPI_CHAR, ROOT, MSGTAG, MPI_COMM_WORLD, &status );
+
+	    int recvcnt;
+	    MPI_Get_count(&status, MPI_CHAR, &recvcnt);
+
+	    uint readsize = (myproc != nprocs-1) ? localStride + overlap : globalSize - (myproc * localStride);
+
+	    assert( (int)readsize == recvcnt );
+
+	    localInput.resize(readsize);
 	}
 
 	MPI_Barrier( MPI_COMM_WORLD );
@@ -1433,9 +1515,7 @@ public:
 	// **********************************************************************
 	// * Construct suffix array recursively
 
-	dcx( input, globalSize, localStride );
-
-	delete [] input;
+	dcx( localInput.data(), globalSize, localStride );
 
 	return true;
     }
@@ -1496,6 +1576,257 @@ public:
 	return true;
     }
 
+    bool checkSA()
+    {
+	if (debug)
+	{
+	    std::cout << "******************** SAChecker (process " << myproc << ") ********************" << std::endl;
+	    std::cout << "localStride = " << localStride << "\n";
+	    std::cout << "localSA.size() = " << localSA.size() << "\n";
+	    std::cout << "localInput.size() = " << localInput.size() << "\n";
+	}
+
+	// **********************************************************************
+	// * Generate pairs (SA[i],i)
+
+	uint localSAsize = localSA.size();
+
+	MPI_Scan( MPI_IN_PLACE, &localSAsize, 1, MPI_UNSIGNED, MPI_SUM, MPI_COMM_WORLD );
+
+	uint indexStart = localSAsize - localSA.size();
+	
+	std::vector<Pair> P ( localSA.size() );
+
+	for (uint i = 0; i < localSA.size(); ++i)
+	{
+	    P[i].index = localSA[i];
+	    P[i].name = indexStart + i;
+	}
+
+	DBG_ARRAY(debug_checker1, "(SA[i],i)", P);
+
+	// **********************************************************************
+	// * Sample sort of array P by (SA[i])
+	{
+	    std::sort(P.begin(), P.end());
+
+	    uint* splitterpos = new uint[nprocs+1];
+	    int* sendcnt = new int[nprocs];
+	    int* sendoff = new int[nprocs+1];
+	    int* recvcnt = new int[nprocs];
+	    int* recvoff = new int[nprocs+1];
+
+	    // use equidistance splitters from 0..globalSize (because indexes are known in advance)
+	    splitterpos[0] = 0;
+	    Pair ptemp;
+	    ptemp.name = 0;
+	    for ( int i = 1; i < nprocs; i++ ) {
+		ptemp.index = i * localStride;
+
+		typename std::vector<Pair>::const_iterator it = std::lower_bound(P.begin(), P.end(), ptemp);
+		splitterpos[i] = it - P.begin();
+	    }
+	    splitterpos[ nprocs ] = P.size();
+
+	    DBG_ARRAY2(debug_checker1, "Splitters positions", splitterpos, nprocs+1);
+
+	    for ( int i = 0; i < nprocs; i++ )
+	    {
+		sendcnt[ i ] = splitterpos[ i + 1 ] - splitterpos[ i ];
+		assert( sendcnt[ i ] >= 0 );
+	    }
+
+	    MPI_Alltoall( sendcnt, 1, MPI_INT, recvcnt, 1, MPI_INT , MPI_COMM_WORLD );
+
+	    sendoff[0] = recvoff[0] = 0;
+	    for ( int i = 1; i <= nprocs; i++ ) {
+		sendoff[i] = sendoff[i - 1] + sendcnt[i - 1];
+		recvoff[i] = recvoff[i - 1] + recvcnt[i - 1];
+	    }
+	    recvoff[nprocs] = recvoff[nprocs - 1] + recvcnt[nprocs - 1];
+
+	    std::vector<Pair> recvBufPair ( recvoff[ nprocs ] + 1 );
+	    unsigned int recvBufPairSize = recvoff[ nprocs ];
+
+	    MPI_Alltoallv( P.data(), sendcnt, sendoff, MPI_PAIR, recvBufPair.data(), recvcnt, recvoff, MPI_PAIR, MPI_COMM_WORLD );
+
+	    P.clear();
+
+	    merge_areas(recvBufPair, recvoff, nprocs);
+
+	    // **********************************************************************
+	    // *** every P needs 1 additional pair
+
+	    Pair temp;
+
+	    MPI_Sendrecv( recvBufPair.data(), 1, MPI_PAIR, ( myproc - 1 + nprocs ) % nprocs, MSGTAG,
+			  &temp, 1, MPI_PAIR, ( myproc + 1 ) % nprocs, MSGTAG,
+			  MPI_COMM_WORLD, &status );
+
+	    if ( myproc == nprocs - 1 )	// last processor gets sentinel pair: virtual pair of '$' position after string
+	    {
+		recvBufPair[ recvBufPairSize ].name = globalSize;
+		recvBufPair[ recvBufPairSize ].index = INT_MAX;
+	    }
+	    else	// other processors get 1 following pair with indexes from the DC
+	    {
+		recvBufPair[ recvBufPairSize ] = temp;
+	    }
+
+	    std::swap(recvBufPair, P);
+	}
+
+	// now consider P as [ (i,ISA[i]) ]_{i=0..n-1} (by substituting i -> ISA[i])
+	
+	DBG_ARRAY(debug_checker1, "(SA[i],i) sorted by SA[i] equiv: (i,ISA[i]) including 1 extra pair", P);
+
+	// **********************************************************************
+	// * First check: is [P.name] the sequence [0..n)
+
+	int error = false;
+
+	for (uint i = 0; i < P.size()-1; ++i)		// -1 due to extra pair at end
+	{
+	    if (P[i].index != myproc * localStride + i)
+	    {
+		std::cout << "SA is not a permutation of [0,n) at position " << P[i].name << "\n";
+		error = true;
+		break;
+	    }
+	}
+
+	MPI_Allreduce( MPI_IN_PLACE, &error, 1, MPI_INT, MPI_LOR, MPI_COMM_WORLD );
+
+	if (error) return false;
+
+	// **********************************************************************
+	// * Generate triples (ISA[i], ISA[i+1], S[i])
+
+	std::vector<Triple> S ( P.size()-1 );	// -1 due to extra pair at end
+
+	for (uint i = 0; i < P.size()-1; ++i)
+	{
+	    S[i].rank1 = P[i].name;
+	    S[i].rank2 = P[i+1].name;
+
+	    S[i].char1 = localInput[i];
+	}
+
+	DBG_ARRAY(debug_checker2, "(ISA[i], ISA[i+1], S[i])", S);
+
+	// **********************************************************************
+	// * Sample sort of array S by (S[].rank1)
+	{
+	    std::sort(S.begin(), S.end());
+
+	    uint* splitterpos = new uint[nprocs+1];
+	    int* sendcnt = new int[nprocs];
+	    int* sendoff = new int[nprocs+1];
+	    int* recvcnt = new int[nprocs];
+	    int* recvoff = new int[nprocs+1];
+
+	    // use equidistance splitters from 0..globalSize (because indexes are known in advance)
+	    splitterpos[0] = 0;
+	    Triple ptemp;
+	    for ( int i = 1; i < nprocs; i++ ) {
+		ptemp.rank1 = i * localStride;
+
+		typename std::vector<Triple>::const_iterator it = std::lower_bound(S.begin(), S.end(), ptemp);
+		splitterpos[i] = it - S.begin();
+	    }
+	    splitterpos[ nprocs ] = S.size();
+
+	    DBG_ARRAY2(debug_checker2, "Splitters positions", splitterpos, nprocs+1);
+
+	    for ( int i = 0; i < nprocs; i++ )
+	    {
+		sendcnt[ i ] = splitterpos[ i + 1 ] - splitterpos[ i ];
+		assert( sendcnt[ i ] >= 0 );
+	    }
+
+	    MPI_Alltoall( sendcnt, 1, MPI_INT, recvcnt, 1, MPI_INT , MPI_COMM_WORLD );
+
+	    sendoff[0] = recvoff[0] = 0;
+	    for ( int i = 1; i <= nprocs; i++ ) {
+		sendoff[i] = sendoff[i - 1] + sendcnt[i - 1];
+		recvoff[i] = recvoff[i - 1] + recvcnt[i - 1];
+	    }
+	    recvoff[nprocs] = recvoff[nprocs - 1] + recvcnt[nprocs - 1];
+
+	    std::vector<Triple> recvBuf ( recvoff[ nprocs ] + 1 );
+	    unsigned int recvBufSize = recvoff[ nprocs ];
+
+	    MPI_Alltoallv( S.data(), sendcnt, sendoff, MPI_TRIPLE, recvBuf.data(), recvcnt, recvoff, MPI_TRIPLE, MPI_COMM_WORLD );
+
+	    S.clear();
+
+	    merge_areas(recvBuf, recvoff, nprocs);
+
+	    // **********************************************************************
+	    // *** every P needs 1 additional triple
+
+	    Triple temp;
+
+	    MPI_Sendrecv( recvBuf.data(), 1, MPI_TRIPLE, ( myproc - 1 + nprocs ) % nprocs, MSGTAG,
+			  &temp, 1, MPI_TRIPLE, ( myproc + 1 ) % nprocs, MSGTAG,
+			  MPI_COMM_WORLD, &status );
+
+	    if ( myproc == nprocs - 1 )	// last processor gets sentinel triple - which shouldnt be compared later on.
+	    {
+		recvBuf[ recvBufSize ].rank1 = INT_MAX;
+		recvBuf[ recvBufSize ].rank2 = INT_MAX;
+		recvBuf[ recvBufSize ].char1 = 0;
+	    }
+	    else	// other processors get 1 following pair with indexes from the DC
+	    {
+		recvBuf[ recvBufSize ] = temp;
+	    }
+
+	    std::swap(recvBuf, S);
+	}
+	
+	DBG_ARRAY(debug_checker2, "(ISA[i], ISA[i+1], S[i]) sorted by ISA[i]\nequiv: (ISA[SA[i]], ISA[SA[i]+1], S[SA[i]]) sorted by i", S);
+
+	// now consider S as [ (i, ISA[SA[i]+1], S[SA[i]]) ]_{i=0..n-1} (by substituting i -> SA[i])
+
+	// **********************************************************************
+	// * Second check: use ISA to check suffix of suffixes for correct order
+
+	unsigned int iend = S.size()-1 - (myproc == nprocs-1 ? 1 : 0);
+
+	for (uint i = 0; !error && i < iend; ++i)		// -1 due to extra pair at end
+	{
+	    if (S[i].char1 > S[i+1].char1) {
+		// simple check of first character of suffix
+		std::cout << "Error: suffix array position " << i + myproc * localStride  << " ordered incorrectly.\n";
+		error = true;
+	    }
+	    else if (S[i].char1 == S[i+1].char1)
+	    {
+		if ( S[i+1].rank2 == globalSize ) {
+		    // last suffix of string must be first among those
+		    // with same first character
+		    std::cout << "Error: suffix array position " << i + myproc * localStride << " ordered incorrectly.\n";
+		    error = true;
+		}
+		if ( S[i].rank2 != globalSize &&
+		     S[i].rank2 > S[i+1].rank2 )
+		{
+		    // positions SA[i] and SA[i-1] has same first
+		    // character but their suffixes are ordered
+		    // incorrectly: the suffix position of SA[i] is given
+		    // by ISA[SA[i]]
+		    std::cout << "Error: suffix array position " << i + myproc * localStride << " ordered incorrectly.\n";
+		    error = true;
+		}
+	    }
+	}
+
+	MPI_Allreduce( MPI_IN_PLACE, &error, 1, MPI_INT, MPI_LOR, MPI_COMM_WORLD );
+
+	return (error == false);
+    }
+
     bool checkSAlocal(const char* filename)
     {
 	// **********************************************************************
@@ -1550,7 +1881,7 @@ public:
 
 	if (myproc == ROOT)
 	{
-	    DBG_ARRAY(1, "Suffixarray collected", gSA);
+	    DBG_ARRAY(debug_output, "Suffixarray collected", gSA);
 
 	    std::ifstream infile( filename );
 	    if (!infile.good()) {
@@ -1558,7 +1889,7 @@ public:
 		return -1;
 	    }
 
-	    std::vector<char> string(globalSize);
+	    std::vector<uint8_t> string(globalSize);
 
 	    infile.read((char*)string.data(), globalSize);
 	    if (!infile.good()) {
@@ -1566,18 +1897,21 @@ public:
 		return -1;
 	    }
 
-	    std::cout << "result suffix array: \n";
-
-	    for (unsigned int i = 0; i < gSA.size(); ++i)
+	    if (debug_output)
 	    {
-		std::cout << i << " : " << gSA[i] << " : ";
+		std::cout << "result suffix array: \n";
 
-		for (unsigned int j = 0; gSA[i]+j < globalSize; ++j)
+		for (unsigned int i = 0; i < gSA.size(); ++i)
 		{
-		    std::cout << string[gSA[i]+j] << " ";
-		}
+		    std::cout << i << " : " << gSA[i] << " : ";
 
-		std::cout << "\n";
+		    for (unsigned int j = 0; gSA[i]+j < globalSize && j < 32; ++j)
+		    {
+			std::cout << strC(string[gSA[i]+j]) << " ";
+		    }
+
+		    std::cout << "\n";
+		}
 	    }
 
 	    assert( sachecker::sa_checker(string, gSA) );
@@ -1607,15 +1941,17 @@ int main( int argc, char **argv )
     }
 
     {
-	pDCX<DC3Param, uint8_t> dcx;
+	pDCX<DC7Param, uint8_t> dcx;
 
 	dcx.run(argv[1]);
-
-	dcx.checkSAlocal(argv[1]);
 
 	if ( argc >= 3 ) {
 	    dcx.writeSA(argv[2]);
 	}
+
+	std::cout << "Suffix array checker: " << dcx.checkSA() << "\n";
+
+	dcx.checkSAlocal(argv[1]);
     }
 
     MPI_Finalize();
