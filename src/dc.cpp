@@ -489,7 +489,8 @@ public:
 	    return (a.chars[d] < b.chars[d]);
 	}
 
-	assert(a.ranks[0] != b.ranks[0]);
+	// ranks must always differ, however for some reason a == b is possible.
+	assert(a.ranks[0] != b.ranks[0] || a.index == b.index);
 
 	return (a.ranks[0] < b.ranks[0]);
     }
@@ -503,7 +504,6 @@ public:
     int			 	nprocs;		// MPI total processes
 
     static const int		ROOT = 0;	// arbitray master process number
-
 
     MPI_Datatype		MPI_PAIR;
     MPI_Datatype		MPI_TRIPLE;
@@ -666,7 +666,7 @@ public:
     };
 
 
-    bool dcx( alphabet_type* input, uint globalSize, uint localStride )
+    bool dcx( alphabet_type* input, uint globalSize, uint localStride, uint depth )
     {
 	uint samplesize = (uint)sqrt(localStride * D / X / nprocs) * samplefactor;
 
@@ -684,7 +684,7 @@ public:
 
 	if (debug)
 	{
-	    std::cout << "******************** DCX (process " << myproc << ") ********************" << std::endl;
+	    std::cout << "******************** DCX (process " << myproc << ") depth " << depth << " ********************" << std::endl;
 
 	    std::cout << "Parameters:\n"
 		      << "  globalSize = " << globalSize << "\n"
@@ -741,7 +741,7 @@ public:
 		samplebuf[i] = R[ int( i * dist ) ];
 
 	    // root proc collects all samples
-	    TupleS* samplebufall;
+	    TupleS* samplebufall = NULL;
 	    if (myproc == ROOT) samplebufall = new TupleS[ nprocs * samplesize ];
 
 	    MPI_Gather( samplebuf, samplesize, MPI_TUPLE_SAMPLE,
@@ -986,7 +986,7 @@ public:
 
 		pDCX<DCParam, uint> rdcx;
 
-		rdcx.dcx( namearray, namesGlobalSize, namesLocalStride );
+		rdcx.dcx( namearray, namesGlobalSize, namesLocalStride, depth+1 );
 
 		//delete [] namearray;
 
@@ -1228,7 +1228,8 @@ public:
 	{
 	    for (unsigned int k = 0; k < X; ++k)
 	    {
-		std::sort(S[k].begin(), S[k].end(), cmpTupleNdepth<X-1>);	// TODO: sort less
+		// TODO: sort less - not all S[k] must be sorted to depth X-1 (needs additional lookup table)
+		std::sort(S[k].begin(), S[k].end(), cmpTupleNdepth<X-1>);
 	    }
 
 	    // select equidistant samples
@@ -1245,7 +1246,7 @@ public:
 	    }
 
 	    // root proc collects all samples
-	    TupleN* samplebufall;
+	    TupleN* samplebufall = NULL;
 	    if (myproc == ROOT) samplebufall = new TupleN[ nprocs * X * samplesize ];
 
 	    MPI_Gather( samplebuf, X * samplesize, MPI_TUPLE_NONSAMPLE, samplebufall, X * samplesize, MPI_TUPLE_NONSAMPLE, ROOT, MPI_COMM_WORLD );
@@ -1409,6 +1410,11 @@ public:
 	    localSA.resize(j);
 	}
 
+	if (debug)
+	{
+	    std::cout << "******************** finished DCX (process " << myproc << ") depth " << depth << " ********************" << std::endl;
+	}
+
 	return true;
     }
 
@@ -1515,7 +1521,7 @@ public:
 	// **********************************************************************
 	// * Construct suffix array recursively
 
-	dcx( localInput.data(), globalSize, localStride );
+	dcx( localInput.data(), globalSize, localStride, 0 );
 
 	return true;
     }
@@ -1948,6 +1954,8 @@ int main( int argc, char **argv )
 	if ( argc >= 3 ) {
 	    dcx.writeSA(argv[2]);
 	}
+
+	MPI_Barrier( MPI_COMM_WORLD );
 
 	std::cout << "Suffix array checker: " << dcx.checkSA() << "\n";
 
