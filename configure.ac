@@ -1,4 +1,4 @@
-AC_PREREQ(2.67)
+AC_PREREQ(2.65)
 AC_INIT(pDCX, 0.0.0)
 AC_CONFIG_SRCDIR([src/dc.cpp])
 AC_CONFIG_AUX_DIR(acscripts)

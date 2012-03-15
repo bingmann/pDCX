@@ -68,8 +68,10 @@ bool sa_checker_full(const std::vector<alphabet_type>& string, const std::vector
 template <typename alphabet_type, typename offset_type>
 bool sa_checker(const std::vector<alphabet_type>& string, const std::vector<offset_type>& SA)
 {
-    if (string.size() != SA.size())
+    if (string.size() != SA.size()) {
+	std::cout << "String length " << string.size() << " != SA length " << SA.size() << "\n";
 	return false;
+    }
 
     std::vector<offset_type> ISA(SA.size());
 
