@@ -513,43 +513,50 @@ public:
     };
 
     template <typename Tuple>
-    void radixsort_CE0(Tuple* array, uint size, size_t depth, size_t K)
+    void radixsort_CI(Tuple* array, uint n, size_t depth, size_t K)
     {
-	if (size < 32) {
+	if (n < 32) {
+	    std::sort(array, array + n);
 	    //insertion_sort(strings, n, depth);
-	    std::sort(array, array + size);
 	    return;
 	}
 
 	size_t bucketsize[K];
-	memset(bucketsize, 0, sizeof(bucketsize));
-	for (size_t i=0; i < size; ++i)
-	    ++bucketsize[ array[i].chars[depth] ];
-
-	size_t bucketindex[K];
-	{
-	    std::vector<Tuple> sorted (size);
-
-	    bucketindex[0] = 0;
-	    for (size_t i=1; i < K; ++i)
-		bucketindex[i] = bucketindex[i-1] + bucketsize[i-1];
-
-	    for (size_t i=0; i < size; ++i)
-		sorted[ bucketindex[ array[i].chars[depth] ]++ ] = array[i];
-
-	    memcpy(array, sorted.data(), size * sizeof(Tuple));
+	memset(bucketsize, 0, K * sizeof(size_t));
+	alphabet_type* restrict oracle = (alphabet_type*)malloc(n * sizeof(alphabet_type));
+	for (size_t i=0; i < n; ++i)
+	    oracle[i] = array[i].chars[depth];
+	for (size_t i=0; i < n; ++i)
+	    ++bucketsize[oracle[i]];
+	ssize_t bucketindex[K];
+	bucketindex[0] = bucketsize[0];
+	size_t last_bucket_size = bucketsize[0];
+	for (unsigned i=1; i < 256; ++i) {
+	    bucketindex[i] = bucketindex[i-1] + bucketsize[i];
+	    if (bucketsize[i]) last_bucket_size = bucketsize[i];
 	}
 
-	//if (depth == 6) return;
-	//if (depth == sizeof(array[0].chars) / sizeof(array[0].chars[0])) return;
+	for (size_t i=0, j; i < n-last_bucket_size; )
+	{
+	    while ( (j = --bucketindex[oracle[i]]) > i )
+	    {
+		std::swap(array[i], array[j]);
+		std::swap(oracle[i], oracle[j]);
+	    }
+	    i += bucketsize[oracle[i]];
+	}
+	free(oracle);
 
-	size_t bsum = 0;
-	for (size_t i=0; i < K; ++i) {
+	if (depth == sizeof(array[0].chars) / sizeof(array[0].chars[0])) return;
+
+	size_t bsum = bucketsize[0];
+	for (size_t i=1; i < 256; ++i) {
 	    if (bucketsize[i] == 0) continue;
-	    radixsort_CE0(array + bsum, bucketsize[i], depth+1, K);
+	    radixsort_CI(array + bsum, bucketsize[i], depth+1, K);
 	    bsum += bucketsize[i];
 	}
     }
+
 
     template <int Depth>
     static inline bool cmpTupleNdepth(const TupleN& a, const TupleN& b)
@@ -910,12 +917,19 @@ public:
 	// {{{ Sample sort of array R
 	{
 	    // sort locally
-	    if (K < 4096 && 0)
-		radixsort_CE0(R.data(), R.size(), 0, K);
+	    if (K < 4096)
+		radixsort_CI(R.data(), R.size(), 0, K);
 	    else
 		std::sort(R.begin(), R.end());
 	    
 	    std::cout << "done local sort sample suffixes\n";
+
+	    DBG_ARRAY(1, "Locally sorted sample suffixes", R);
+
+	    for (unsigned int i = 0; i < R.size()-1; ++i)
+	    {
+		assert(R[i] < R[i+1] || R[i] == R[i+1]);
+	    }
 
 	    //DBG_ARRAY(1, "Locally sorted sample suffixes", R);
 
@@ -1110,7 +1124,7 @@ public:
 	    {
 		for (unsigned int i = 0; i < D; ++i)
 		{
-		    Pair x; x.index = globalMultipleOfX * X + DC[i]; x.name = D-1-i;
+		    Pair x; x.index = globalMultipleOfX * X + DC[i]; x.name = D-1-i; x.unique = 1;
 		    P.push_back(x);
 		}
 	    }
