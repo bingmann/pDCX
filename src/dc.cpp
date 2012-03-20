@@ -359,6 +359,19 @@ void vector_free(std::vector<Type>& v)
     std::swap(v,v2);
 }
 
+template <typename Type>
+void exclusive_prefixsum(Type* array, unsigned int size)
+{
+    uint sum = 0;
+    for (unsigned int i = 0; i < size; ++i)
+    {
+	uint newsum = sum + array[i];
+	array[i] = sum;
+	sum = newsum;
+    }
+    array[size] = sum;
+}
+
 template <typename DCParam, typename alphabet_type>
 class pDCX
 {
@@ -379,6 +392,7 @@ public:
 
     static const bool debug		= true;
     static const bool debug_input	= false;
+    static const bool debug_rebalance	= false;
     static const bool debug_sortsample	= false;
     static const bool debug_nameing	= false;
     static const bool debug_recursion	= false;
@@ -650,9 +664,9 @@ public:
     }
 
     template <typename Type>
-    void gather_vector(const std::vector<Type>& v, std::vector<Type>& out, unsigned int removelap)
+    void gather_vector(const std::vector<Type>& v, std::vector<Type>& out, unsigned int removelap = 0, MPI_Datatype mdt = GET_MPI_DATATYPE(Type))
     {
-	int size = v.size() - removelap;
+	int size = v.size() - (myproc != nprocs-1 ? removelap : 0);
 
 	int* recvcnt = new int[nprocs];
 	int* recvoff = new int[nprocs+1];
@@ -665,13 +679,12 @@ public:
 	    for ( int i = 1; i <= nprocs; i++ ) {
 		recvoff[i] = recvoff[i-1] + recvcnt[i-1];
 	    }
+
+	    out.resize( recvoff[nprocs] );
 	}
 
-	if (myproc == ROOT)
-	    out.resize( recvoff[nprocs] );
-
-	MPI_Gatherv((Type*)v.data(), size, GET_MPI_DATATYPE(Type),
-		    out.data(), recvcnt, recvoff, GET_MPI_DATATYPE(Type), ROOT, MPI_COMM_WORLD);
+	MPI_Gatherv((Type*)v.data(), size, mdt,
+		    out.data(), recvcnt, recvoff, mdt, ROOT, MPI_COMM_WORLD);
     }
 
     // **********************************************************************
@@ -746,23 +759,55 @@ public:
 	    return (t1.ranks[ deprank[1] ] < t2.ranks[ deprank[2] ]);
 	}
     };
-
-
-    bool dcx( alphabet_type* input, uint globalSize, uint localStride, uint depth, uint K )
+    
+    // functions for rebalancing the input
+    static inline uint RangeFix(uint a, uint b, uint limit)
     {
-	uint samplesize = (uint)sqrt(localStride * D / X / nprocs) * samplefactor;
+	if (b >= a) return 0;
+	return std::min<uint>(limit, a - b);
+    }
 
-	if ( samplesize >= D * (localStride / X) ) samplesize = D * (localStride / X) - 1;
+    // functions for rebalancing the input
+    inline uint Extra(int i)
+    {
+	return (i != nprocs-1) ? (X-1) : 0;
+    }
 
+    bool dcx( std::vector<alphabet_type>& input, uint depth, uint K )
+    {
 	const unsigned int* DC = DCParam::DC;
 
-	const unsigned int globalMultipleOfX = (globalSize + X - 1) / X;	// rounded up number of global multiples of X
+	// **********************************************************************
+        // * analyze input and rebalance input to localStride, which is a multiple of p and X.
+
+	// collect all localSizes and calc prefix sum
+
+	unsigned int localSize = input.size();
+
+	unsigned int localSizes[nprocs+1];
+
+	MPI_Allgather( &localSize, 1, MPI_UNSIGNED, localSizes, 1, MPI_UNSIGNED, MPI_COMM_WORLD );
+
+	exclusive_prefixsum(localSizes, nprocs);
+
+	DBG_ARRAY2(debug_rebalance, "localSizes", localSizes, nprocs+1);
+
+	// calculate localStride
+
+	const uint globalSize = localSizes[nprocs];			// global size of input
+
+	uint localStride = ( globalSize + nprocs - 1 ) / nprocs;	// divide by processors rounding up
+	localStride += X - localStride % X;				// round up to nearest multiple of X
 
 	const unsigned int localOffset = myproc * localStride;
-	const unsigned int localSize = (myproc != nprocs-1) ? localStride : globalSize - localOffset;
-	const unsigned int localSizeReal = (myproc != nprocs-1) ? localStride + (X-1) : globalSize - localOffset;
+	localSize = (myproc != nprocs-1) ? localStride : globalSize - localOffset;	// target localSize (without extra tuples)
+	const unsigned int localSizeExtra = (myproc != nprocs-1) ? localStride + (X-1) : globalSize - localOffset;	// target localSize with extra tuples
 
+	const unsigned int globalMultipleOfX = (globalSize + X - 1) / X;	// rounded up number of global multiples of X
 	const unsigned int M = (localSize + X - 1) / X;			// number of incomplete X chars in local area size
+
+	uint samplesize = (uint)sqrt(localStride * D / X / nprocs) * samplefactor;
+	if ( samplesize >= D * (localStride / X) ) samplesize = D * (localStride / X) - 1;
 
 	if (debug)
 	{
@@ -772,16 +817,68 @@ public:
 		      << "  globalSize = " << globalSize << "\n"
 		      << "  localStride = " << localStride << "\n"
 		      << "  localSize = " << localSize << "\n"
-		      << "  localSizeReal = " << localSizeReal << "\n"
+		      << "  localSizeExtra = " << localSizeExtra << "\n"
 		      << "  globalMultipleOfX = " << globalMultipleOfX << "\n"
 		      << "  localMultipleOfX (aka M) = " << M << "\n"
 		      << "  samplesize = " << samplesize << "\n"
 		      << "  current memusage = mem " << getmemusage() << "\n";
 	}
 
-	DBG_ARRAY2(debug_input, "Input", input, localSize);
+	// rebalance input
 
-	DBG_ARRAY2(debug_input, "Input (extra tuples)", (input + localSize), localSizeReal - localSize);
+	{
+	    int* sendcnt = new int[ nprocs ];
+	    int* sendoff = new int[ nprocs ];
+	    int* recvcnt = new int[ nprocs ];
+	    int* recvoff = new int[ nprocs ];
+
+	    sendoff[0] = 0;
+	    for (int i = 1; i < nprocs; ++i)
+	    {
+		if (debug_rebalance)
+		{
+		    std::cout << "range sent " << myproc << " -> " << i << " is "
+			      << RangeFix(i * localStride, localSizes[myproc], input.size()) << " - "
+			      << RangeFix((i+1) * localStride + Extra(i), localSizes[myproc], input.size()) << "\n";
+		}
+
+		sendoff[i] = RangeFix(i * localStride, localSizes[myproc], input.size());
+		sendcnt[i-1] = RangeFix(i * localStride + Extra(i-1), localSizes[myproc], input.size()) - sendoff[i-1];
+	    }
+	    sendcnt[nprocs-1] = input.size() - sendoff[nprocs-1];
+	    
+	    DBG_ARRAY2(debug_rebalance, "sendcnt", sendcnt, nprocs);
+	    DBG_ARRAY2(debug_rebalance, "sendoff", sendoff, nprocs);
+
+	    recvoff[0] = 0;
+	    for (int i = 1; i < nprocs; ++i)
+	    {
+		if (debug_rebalance)
+		{
+		    std::cout << "range recv " << i << " -> " << myproc << " is "
+			      << RangeFix(localSizes[i], myproc * localStride, localSizeExtra) << "\n"
+			      << RangeFix(localSizes[i+1], myproc * localStride, localSizeExtra) << "\n";
+		}
+
+		recvoff[i] = RangeFix(localSizes[i], myproc * localStride, localSizeExtra);
+		recvcnt[i-1] = RangeFix(localSizes[i], myproc * localStride, localSizeExtra) - recvoff[i-1];
+	    }
+	    recvcnt[nprocs-1] = localSizeExtra - recvoff[nprocs-1];
+
+	    DBG_ARRAY2(debug_rebalance, "recvcnt", recvcnt, nprocs);
+	    DBG_ARRAY2(debug_rebalance, "recvoff", recvoff, nprocs);
+
+	    std::vector<alphabet_type> recvbuf (localSizeExtra);
+
+	    MPI_Alltoallv( input.data(), sendcnt, sendoff, GET_MPI_DATATYPE(alphabet_type),
+			   recvbuf.data(), recvcnt, recvoff, GET_MPI_DATATYPE(alphabet_type), MPI_COMM_WORLD );
+	    
+	    std::swap(input, recvbuf);
+	}
+
+	DBG_ARRAY2(debug_input, "Input (without extra tuples)", input.data(), localSize);
+
+	DBG_ARRAY2(debug_input, "Input (extra tuples)", (input.data() + localSize), localSizeExtra - localSize);
 
 	// **********************************************************************
 	// * calculate build DC-tuple array and sort locally
@@ -796,7 +893,7 @@ public:
 		R[j].index = localOffset + i + DC[d];
 
 		for (uint x = i + DC[d], y = 0; y < X; ++x, ++y)
-		    R[j].chars[y] = (x < localSizeReal) ? input[x] : 0;
+		    R[j].chars[y] = (x < localSizeExtra) ? input[x] : 0;
 
 		++j;
 	    }
@@ -934,7 +1031,7 @@ public:
 
 	std::vector<Pair> P ( R.size() );
 
-	int recursion;
+	uint lastname, recursion;
 
 	{
 	    // naming with local names
@@ -975,35 +1072,61 @@ public:
 	    uint namesglob;
 	    MPI_Scan( &name, &namesglob, 1, MPI_UNSIGNED, MPI_SUM, MPI_COMM_WORLD );
 
-	    // update local names
+	    // update local names - and free up first D names for sentinel ranks
 	    for ( uint i = 0; i < P.size(); i++ )
-		P[i].name += (namesglob - name);
+		P[i].name += (namesglob - name) + D;
 
 	    DBG_ARRAY(debug_nameing, "Global Names", P);
 
-	    // determine whether recursion is necessary: last proc checks its highest name
+	    // determine whether recursion is necessary: last proc broadcasts highest name
 
-	    if (myproc == nprocs - 1)
-	    {
-		if (1 || debug_nameing)
-		    std::cout << "last name: " << P.back().name << " =? " << D * globalMultipleOfX << "\n";
+	    if (myproc == nprocs-1)
+		lastname = P.back().name;
 
-		recursion = (P.back().name != D * globalMultipleOfX);
+	    MPI_Bcast( &lastname, 1, MPI_INT, nprocs - 1, MPI_COMM_WORLD );
 
-		if (debug_nameing)
-		    std::cout << "recursion: " << recursion << "\n";
-	    }
+	    if (1 || debug_nameing)
+		std::cout << "last name: " << lastname << " =? " << D * globalMultipleOfX + D << "\n";
+	    
+	    recursion = (lastname != D * globalMultipleOfX + D);
 
-	    MPI_Bcast( &recursion, 1, MPI_INT, nprocs - 1, MPI_COMM_WORLD );
+	    if (1 || debug_nameing)
+		std::cout << "recursion: " << recursion << "\n";
 	}
 
 	std::cout << "done naming - mem = " << getmemusage() << "\n";
 
 	if ( recursion )
 	{
-	    uint namesGlobalSize = D * globalMultipleOfX;
+	    uint namesGlobalSize = D * globalMultipleOfX + D;				// add D dummies separating mod-X areas
 	    uint namesLocalStride = ( namesGlobalSize + nprocs - 1 ) / nprocs;		// rounded up
 	    namesLocalStride += X - namesLocalStride % X;				// round up to nearest multiple of X
+	    uint namesGlobalMultipleOfX = globalMultipleOfX + 1;			// account one extra X-tuple for D separation dummies
+
+	    std::cout << "namesGlobalSize = " << namesGlobalSize << "\n"
+		      << "namesLocalStride = " << namesLocalStride << "\n";
+
+	    if (myproc == nprocs-1)
+	    {
+		for (unsigned int i = 0; i < D; ++i)
+		{
+		    Pair x; x.index = globalMultipleOfX * X + DC[i]; x.name = D-1-i;
+		    P.push_back(x);
+		}
+	    }
+
+	    if (debug_recursion)
+	    {
+		std::vector<Pair> Pall;
+		gather_vector(P, Pall, 0, MPI_PAIR);
+
+		if (myproc == ROOT)
+		{
+		    std::sort(Pall.begin(), Pall.end(), Pair::cmpIndexModDiv);		// sort locally
+
+		    DBG_ARRAY(debug_recursion, "Pall", Pall);
+		}
+	    }
 
 	    if (namesGlobalSize > 2 * X * nprocs)
 	    {
@@ -1015,7 +1138,7 @@ public:
 
 		std::sort(P.begin(), P.end(), Pair::cmpIndexModDiv);		// sort locally
 
-		DBG_ARRAY(debug_recursion, "Global Names sorted cmpModDiv", P);
+		DBG_ARRAY(debug_recursion, "Names locally sorted by cmpModDiv", P);
 
 		uint* splitterpos = new uint[nprocs+1];
 		int* sendcnt = new int[nprocs];
@@ -1032,8 +1155,8 @@ public:
 
 		    unsigned int x = ptemp.index;
 
-		    unsigned int divM = ptemp.index / globalMultipleOfX;
-		    ptemp.index = DC[divM] + X * (ptemp.index - divM * globalMultipleOfX);
+		    unsigned int divM = ptemp.index / namesGlobalMultipleOfX;
+		    ptemp.index = DC[divM] + X * (ptemp.index - divM * namesGlobalMultipleOfX);
 
 		    if (debug_recursion)
 			std::cout << "splitter: " << ptemp.index << " = " << x << " - " << divM << "\n";
@@ -1060,8 +1183,7 @@ public:
 		}
 		recvoff[nprocs] = recvoff[nprocs - 1] + recvcnt[nprocs - 1];
 
-		std::vector<Pair> recvBufPair ( recvoff[ nprocs ] + X-1 );
-		unsigned int recvBufPairSize = recvoff[ nprocs ];
+		std::vector<Pair> recvBufPair ( recvoff[ nprocs ] );
 
 		MPI_Alltoallv( P.data(), sendcnt, sendoff, MPI_PAIR, recvBufPair.data(), recvcnt, recvoff, MPI_PAIR, MPI_COMM_WORLD );
 
@@ -1069,12 +1191,6 @@ public:
 
 		// final X-1 tuples should be ignored due to recvoff areas
 		merge_areas(recvBufPair, recvoff, nprocs, Pair::cmpIndexModDiv);
-
-		// transfer additional X-1 names for last tuple
-
-		MPI_Sendrecv( recvBufPair.data(), X-1, MPI_PAIR, ( myproc - 1 + nprocs ) % nprocs, MSGTAG,
-			      recvBufPair.data() + recvBufPairSize, X-1, MPI_PAIR, ( myproc + 1 ) % nprocs, MSGTAG,
-			      MPI_COMM_WORLD, &status );
 
 		// TODO: merge and reduce at once
 
@@ -1091,9 +1207,7 @@ public:
 		    namearray[i] = recvBufPair[i].name;
 		}
 
-		DBG_ARRAY2(debug_recursion, "Pairs P (globally sorted by indexModDiv)", recvBufPair.data(), recvBufPairSize);
-
-		DBG_ARRAY2(debug_recursion, "Extra pairs", (recvBufPair.data() + recvBufPairSize), recvBufPair.size() - recvBufPairSize);
+		DBG_ARRAY(debug_recursion, "Pairs P (globally sorted by indexModDiv)", recvBufPair);
 
 		std::cout << "uniques in sequence: " << uniqueseq << " - " << recvBufPair.size() / 2 << "\n";
 
@@ -1117,8 +1231,8 @@ public:
 
 			namearray[j] = recvBufPair[i].name;
 			
-			unsigned int divM = i / globalMultipleOfX;
-			uint index = DC[divM] + X * (i - divM * globalMultipleOfX);
+			unsigned int divM = i / namesGlobalMultipleOfX;
+			uint index = DC[divM] + X * (i - divM * namesGlobalMultipleOfX);
 
 			indexarray[j] = index;
 			std::cout << "dup/firstunique name: " << namearray[j] << " - index " << indexarray[j] << "\n";
@@ -1135,7 +1249,7 @@ public:
 		    vector_free(recvBufPair);
 
 		    pDCX<DCParam, uint> rdcx;
-		    rdcx.dcx( namearray.data(), namesGlobalSize - (X-1), namesLocalStride, depth+1, oldNamesGlobalSize+1 );
+		    //rdcx.dcx( namearray.data(), namesGlobalSize - (X-1), namesLocalStride, depth+1, oldNamesGlobalSize+1 );
 
 		    std::cout << "SAlocal: " << rdcx.localSA.size() << " - indexes " << j << "\n";
 		    std::cout << "SAlocal: " << rdcx.localSA.size() << " - indexes " << j << "\n";
@@ -1150,12 +1264,16 @@ public:
 
 		    vector_free(recvBufPair);
 
+		    DBG_ARRAY(debug_recursion, "namearray", namearray);
+
+		    assert( namearray.size() == namesLocalStride || myproc == nprocs-1 );
+
 		    pDCX<DCParam, uint> rdcx;
-		    rdcx.dcx( namearray.data(), namesGlobalSize, namesLocalStride, depth+1, namesGlobalSize+1 );
+		    rdcx.dcx( namearray, depth+1, lastname+1 );
 
 		    if (debug_rec_selfcheck)
 		    {
-			if (1 || debug_recursion)
+			if (debug)
 			    std::cout << "---------------------   RECURSION local checkSA ---------------- " << localSize << std::endl;
 
 			std::vector<uint> nameAll;
@@ -1163,6 +1281,9 @@ public:
 
 			gather_vector(namearray, nameAll, X-1);
 			gather_vector(rdcx.localSA, SAall, 0);
+
+			DBG_ARRAY(debug_recursion, "nameAll", nameAll);
+			DBG_ARRAY(debug_recursion, "SAall", SAall);
 
 			if (myproc == ROOT)
 			{
@@ -1181,14 +1302,7 @@ public:
 
 		    MPI_Allgather( &SAsize, 1, MPI_UNSIGNED, allSAsize, 1, MPI_UNSIGNED, MPI_COMM_WORLD );
 
-		    uint sum = 0;
-		    for (int i = 0; i < nprocs; ++i)
-		    {
-			uint newsum = sum + allSAsize[i];
-			allSAsize[i] = sum;
-			sum = newsum;
-		    }
-		    allSAsize[nprocs] = sum;
+		    exclusive_prefixsum(allSAsize, nprocs);
 
 		    DBG_ARRAY2(debug_recursion, "allSAsize", allSAsize, nprocs+1);
 
@@ -1202,9 +1316,9 @@ public:
 
 			uint saidx = rdcx.localSA[i];
 
-			unsigned int divM = saidx / globalMultipleOfX;
+			unsigned int divM = saidx / namesGlobalMultipleOfX;
 
-			uint index = DC[divM] + X * (saidx - divM * globalMultipleOfX);
+			uint index = DC[divM] + X * (saidx - divM * namesGlobalMultipleOfX);
 
 			P[i].index = index;
 			P[i].name = allSAsize[myproc] + i + 1;
@@ -1213,36 +1327,17 @@ public:
 	    }
 	    else // use sequential suffix sorter
 	    {
-		if (debug_recursion)
+		if (debug)
 		    std::cout << "---------------------   RECURSION local sais ---------------- " << localSize << std::endl;
 
-		int Psize = P.size();
-
-		int* recvcnt = new int[nprocs];
-		int* recvoff = new int[nprocs+1];
-
-		MPI_Gather( &Psize, 1, MPI_INT, recvcnt, 1, MPI_INT, ROOT, MPI_COMM_WORLD );
-
-		if (myproc == ROOT)
-		{
-		    recvoff[0] = 0;
-		    for ( int i = 1; i <= nprocs; i++ ) {
-			recvoff[i] = recvoff[i-1] + recvcnt[i-1];
-		    }
-		    assert( recvoff[nprocs] == (int)namesGlobalSize );
-		}
-
 		std::vector<Pair> Pall;
-
-		if (myproc == ROOT)
-		    Pall.resize( namesGlobalSize );
-
-		MPI_Gatherv(P.data(), P.size(), MPI_PAIR,
-			    Pall.data(), recvcnt, recvoff, MPI_PAIR, ROOT, MPI_COMM_WORLD);
+		gather_vector(P, Pall, 0, MPI_PAIR);
 
 		if (myproc == ROOT)
 		{
-		    uint maxname = Pall.back().name;
+		    assert( Pall.size() == (int)namesGlobalSize );
+
+		    DBG_ARRAY(debug_recursion, "Global Names sorted index", Pall);
 
 		    std::sort(Pall.begin(), Pall.end(), Pair::cmpIndexModDiv);		// sort locally
 
@@ -1256,16 +1351,16 @@ public:
 
 		    int* rSA = new int [ Pall.size() ];
 
-		    yuta_sais_lite::saisxx< uint*, int*, int >( namearray, rSA, Pall.size(), maxname+1 );
+		    yuta_sais_lite::saisxx< uint*, int*, int >( namearray, rSA, Pall.size(), lastname+1 );
 
 		    delete [] namearray;
 
 		    DBG_ARRAY2(debug_recursion, "Recursive SA", rSA, Pall.size());
 
 		    // generate rank array - same as updating pair array with correct names
-		    for (unsigned int i = 0; i < Pall.size(); ++i)
+		    for (uint i = D; i < Pall.size(); ++i)
 		    {
-			Pall[ rSA[i] ].name = i+1;
+			Pall[ rSA[i] ].name = i + D;
 		    }
 
 		    DBG_ARRAY(debug_recursion, "Fixed Global Names sorted cmpModDiv", Pall);
@@ -1352,11 +1447,12 @@ public:
 
 	    DBG_ARRAY2(debug_recursion, "Pairs P (extra tuples)", temp, D);
 
-	    if ( myproc == nprocs - 1 )	// last processor gets sentinel tuples with maximum ranks
+	    if ( myproc == nprocs - 1 )	// last processor gets sentinel tuples with lowest ranks
 	    {
 		for (unsigned int i = 0; i < D; ++i)
 		{
-		    recvBufPair[ recvBufPairSize + i ].name = INT_MAX - D + i;
+		    // the first D ranks are freed up (above) for the following sentinel ranks 0..D-1:
+		    recvBufPair[ recvBufPairSize + i ].name = D - i - 1;
 		    recvBufPair[ recvBufPairSize + i ].index = recvBufPair[ recvBufPairSize - D ].index - DC[0] + X + DC[i];
 		}
 	    }
@@ -1399,7 +1495,7 @@ public:
 		S[k][i].index = myproc * localStride + i * X + k;
 
 		for (unsigned int c = 0; c < X-1; ++c)
-		    S[k][i].chars[c] = (i*X + k + c < localSizeReal) ? input[ i*X + k + c ] : 0;
+		    S[k][i].chars[c] = (i*X + k + c < localSizeExtra) ? input[ i*X + k + c ] : 0;
 
 		for (unsigned int d = 0; d < D; ++d)
 		    S[k][i].ranks[d] = P[ dp + d ].name;
@@ -1657,10 +1753,9 @@ public:
 	}
 
 	// **********************************************************************
-	// * Read input file and send to other processors - with an overlap of (X-1) characters for the final tuples
+	// * Read input file and send to other processors
 
-	const int overlap = X-1;
-	localInput.resize( localStride + overlap );
+	localInput.resize( localStride );
 
 	assert( sizeof(alphabet_type) == 1 );
 
@@ -1673,7 +1768,7 @@ public:
 	    {
 		infile.seekg( p * localStride, std::ios::beg );
 
-		uint readsize = (p != nprocs-1) ? localStride + overlap : globalSize - (p * localStride);
+		uint readsize = (p != nprocs-1) ? localStride : globalSize - (p * localStride);
 
 		std::cout << "Read for process " << p << " from pos " << p * localStride << " of length " << readsize << std::endl;
 
@@ -1688,10 +1783,10 @@ public:
 
 	    // read input for processor 0 (ROOT)
 
-	    std::cout << "Read for process 0 from pos 0 of length " << localStride + overlap << std::endl;
+	    std::cout << "Read for process 0 from pos 0 of length " << localStride << std::endl;
 
 	    infile.seekg( 0, std::ios::beg );
-	    infile.read( (char*)localInput.data(), localStride + overlap );
+	    infile.read( (char*)localInput.data(), localStride );
 
 	    if (!infile.good()) {
 		perror("Error reading file.");
@@ -1700,12 +1795,12 @@ public:
 	}
 	else // not ROOT: receive data
 	{
-	    MPI_Recv( localInput.data(), localStride + overlap, MPI_CHAR, ROOT, MSGTAG, MPI_COMM_WORLD, &status );
+	    MPI_Recv( localInput.data(), localStride, MPI_CHAR, ROOT, MSGTAG, MPI_COMM_WORLD, &status );
 
 	    int recvcnt;
 	    MPI_Get_count(&status, MPI_CHAR, &recvcnt);
 
-	    uint readsize = (myproc != nprocs-1) ? localStride + overlap : globalSize - (myproc * localStride);
+	    uint readsize = (myproc != nprocs-1) ? localStride : globalSize - (myproc * localStride);
 
 	    assert( (int)readsize == recvcnt );
 
@@ -1717,7 +1812,7 @@ public:
 	// **********************************************************************
 	// * Construct suffix array recursively
 
-	dcx( localInput.data(), globalSize, localStride, 0, 256 );
+	dcx( localInput, 0, 256 );
 
 	return true;
     }
@@ -1807,7 +1902,6 @@ public:
 	    P[i].name = indexStart + i;
 	}
 
-	const unsigned int depth = 0;
 	DBG_ARRAY(debug_checker1, "(SA[i],i)", P);
 
 	// **********************************************************************
