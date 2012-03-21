@@ -6,4 +6,4 @@ pDCX_SOURCES = dc.cpp
 
 AM_CXXFLAGS = -W -Wall -Wno-unused-parameter -O3 -march=native
 
-LIBS = -lproc
+#LIBS = -lproc
