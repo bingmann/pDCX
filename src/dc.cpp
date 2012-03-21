@@ -513,11 +513,10 @@ public:
     };
 
     template <typename Tuple>
-    void radixsort_CI(Tuple* array, uint n, size_t depth, size_t K)
+    static inline void radixsort_CI(Tuple* array, uint n, size_t depth, size_t K)
     {
 	if (n < 32) {
 	    std::sort(array, array + n);
-	    //insertion_sort(strings, n, depth);
 	    return;
 	}
 
@@ -526,16 +525,17 @@ public:
 	alphabet_type* restrict oracle = (alphabet_type*)malloc(n * sizeof(alphabet_type));
 	for (size_t i=0; i < n; ++i)
 	    oracle[i] = array[i].chars[depth];
-	for (size_t i=0; i < n; ++i)
+	for (size_t i=0; i < n; ++i) {
+	    assert(oracle[i] < K);
 	    ++bucketsize[oracle[i]];
+	}
 	ssize_t bucketindex[K];
 	bucketindex[0] = bucketsize[0];
 	size_t last_bucket_size = bucketsize[0];
-	for (unsigned i=1; i < 256; ++i) {
+	for (unsigned i=1; i < K; ++i) {
 	    bucketindex[i] = bucketindex[i-1] + bucketsize[i];
 	    if (bucketsize[i]) last_bucket_size = bucketsize[i];
 	}
-
 	for (size_t i=0, j; i < n-last_bucket_size; )
 	{
 	    while ( (j = --bucketindex[oracle[i]]) > i )
@@ -547,16 +547,14 @@ public:
 	}
 	free(oracle);
 
-	if (depth == sizeof(array[0].chars) / sizeof(array[0].chars[0])) return;
+	if (depth == X-1) return;
 
-	size_t bsum = bucketsize[0];
-	for (size_t i=1; i < 256; ++i) {
-	    if (bucketsize[i] == 0) continue;
+	size_t bsum = 0;
+	for (size_t i=0; i < K; bsum += bucketsize[i++]) {
+	    if (bucketsize[i] <= 1) continue;
 	    radixsort_CI(array + bsum, bucketsize[i], depth+1, K);
-	    bsum += bucketsize[i];
 	}
     }
-
 
     template <int Depth>
     static inline bool cmpTupleNdepth(const TupleN& a, const TupleN& b)
@@ -828,6 +826,7 @@ public:
 		      << "  globalMultipleOfX = " << globalMultipleOfX << "\n"
 		      << "  localMultipleOfX (aka M) = " << M << "\n"
 		      << "  samplesize = " << samplesize << "\n"
+		      << "  K = " << K << "\n"
 		      << "  current memusage = mem " << getmemusage() << "\n";
 	}
 
@@ -924,14 +923,7 @@ public:
 	    
 	    std::cout << "done local sort sample suffixes\n";
 
-	    DBG_ARRAY(1, "Locally sorted sample suffixes", R);
-
-	    for (unsigned int i = 0; i < R.size()-1; ++i)
-	    {
-		assert(R[i] < R[i+1] || R[i] == R[i+1]);
-	    }
-
-	    //DBG_ARRAY(1, "Locally sorted sample suffixes", R);
+	    DBG_ARRAY(debug_sortsample, "Locally sorted sample suffixes", R);
 
 	    // **********************************************************************
 	    // * select equidistance samples and redistribute sorted DC-tuples
