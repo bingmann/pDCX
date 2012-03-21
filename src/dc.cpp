@@ -28,7 +28,7 @@
 #include <sstream>
 #include <errno.h>
 
-#include <proc/readproc.h>
+//#include <proc/readproc.h>
 
 #include "yuta-sais-lite.h"
 #include "sachecker.h"
@@ -53,9 +53,10 @@
 
 unsigned int getmemusage()
 {
-    struct proc_t usage;
-    look_up_our_self(&usage);
-    return usage.vsize;
+//    struct proc_t usage;
+//    look_up_our_self(&usage);
+//    return usage.vsize;
+    return 0;
 }
 
 // **********************************************************************
@@ -495,6 +496,30 @@ public:
 	uint		ranks[D];
 	uint		index;
 
+	bool operator< (const TupleN& a) const
+	{
+	    return cmpTupleNdepth<X-1>(*this, a);
+	}
+
+	bool operator== (const TupleN& o) const
+	{
+	    for (unsigned int i = 0; i < X-1; ++i)
+	    {
+		if (chars[i] != o.chars[i]) return false;
+	    }
+	    for (unsigned int i = 0; i < D; ++i)
+	    {
+		if (ranks[i] != o.ranks[i]) return false;
+	    }
+	    if (index != o.index) return false;
+	    return true;
+	}
+
+	bool operator!= (const TupleN& o) const
+	{
+	    return !( *this == o );
+	}
+
 	friend std::ostream& operator<< (std::ostream& os, const TupleN& t)
 	{
 	    os << "(c[";
@@ -512,7 +537,30 @@ public:
 	}
     };
 
-    template <typename Tuple>
+    template <int Depth>
+    static inline bool cmpTupleNdepth(const TupleN& a, const TupleN& b)
+    {
+	for (unsigned int d = 0; d < Depth; ++d)
+	{
+	    if (a.chars[d] == b.chars[d]) continue;
+	    return (a.chars[d] < b.chars[d]);
+	}
+
+	// ranks must always differ, however for some reason a == b is possible.
+	assert(a.ranks[0] != b.ranks[0] || a.index == b.index);
+
+	return (a.ranks[0] < b.ranks[0]);
+    }
+
+    static inline bool cmpTupleNranks(const TupleN& a, const TupleN& b)
+    {
+	// ranks must always differ, however for some reason a == b is possible.
+	assert(a.ranks[0] != b.ranks[0] || a.index == b.index);
+
+	return (a.ranks[0] < b.ranks[0]);
+    }
+
+    template <int MaxDepth, typename Tuple>
     static inline void radixsort_CI(Tuple* array, uint n, size_t depth, size_t K)
     {
 	if (n < 32) {
@@ -522,7 +570,7 @@ public:
 
 	size_t bucketsize[K];
 	memset(bucketsize, 0, K * sizeof(size_t));
-	alphabet_type* restrict oracle = (alphabet_type*)malloc(n * sizeof(alphabet_type));
+	alphabet_type* oracle = (alphabet_type*)malloc(n * sizeof(alphabet_type));
 	for (size_t i=0; i < n; ++i)
 	    oracle[i] = array[i].chars[depth];
 	for (size_t i=0; i < n; ++i) {
@@ -547,28 +595,61 @@ public:
 	}
 	free(oracle);
 
-	if (depth == X-1) return;
+	if (depth+1 == MaxDepth) return;
 
 	size_t bsum = 0;
 	for (size_t i=0; i < K; bsum += bucketsize[i++]) {
 	    if (bucketsize[i] <= 1) continue;
-	    radixsort_CI(array + bsum, bucketsize[i], depth+1, K);
+	    radixsort_CI<MaxDepth>(array + bsum, bucketsize[i], depth+1, K);
 	}
     }
 
-    template <int Depth>
-    static inline bool cmpTupleNdepth(const TupleN& a, const TupleN& b)
+    template <int MaxDepth, typename Tuple>
+    static inline void radixsort_CI2(Tuple* array, uint n, size_t depth, size_t K)
     {
-	for (unsigned int d = 0; d < Depth; ++d)
-	{
-	    if (a.chars[d] == b.chars[d]) continue;
-	    return (a.chars[d] < b.chars[d]);
+	if (n < 32) {
+	    std::sort(array, array + n);
+	    return;
 	}
 
-	// ranks must always differ, however for some reason a == b is possible.
-	assert(a.ranks[0] != b.ranks[0] || a.index == b.index);
+	if (depth == MaxDepth) {
+	    // still have to finish sort of first rank as tie breaker
+	    std::sort(array, array + n, cmpTupleNranks);
+	    return;
+	}
 
-	return (a.ranks[0] < b.ranks[0]);
+	size_t bucketsize[K];
+	memset(bucketsize, 0, K * sizeof(size_t));
+	alphabet_type* oracle = (alphabet_type*)malloc(n * sizeof(alphabet_type));
+	for (size_t i=0; i < n; ++i)
+	    oracle[i] = array[i].chars[depth];
+	for (size_t i=0; i < n; ++i) {
+	    assert(oracle[i] < K);
+	    ++bucketsize[oracle[i]];
+	}
+	ssize_t bucketindex[K];
+	bucketindex[0] = bucketsize[0];
+	size_t last_bucket_size = bucketsize[0];
+	for (unsigned i=1; i < K; ++i) {
+	    bucketindex[i] = bucketindex[i-1] + bucketsize[i];
+	    if (bucketsize[i]) last_bucket_size = bucketsize[i];
+	}
+	for (size_t i=0, j; i < n-last_bucket_size; )
+	{
+	    while ( (j = --bucketindex[oracle[i]]) > i )
+	    {
+		std::swap(array[i], array[j]);
+		std::swap(oracle[i], oracle[j]);
+	    }
+	    i += bucketsize[oracle[i]];
+	}
+	free(oracle);
+
+	size_t bsum = 0;
+	for (size_t i=0; i < K; bsum += bucketsize[i++]) {
+	    if (bucketsize[i] <= 1) continue;
+	    radixsort_CI2<MaxDepth>(array + bsum, bucketsize[i], depth+1, K);
+	}
     }
 
     // **********************************************************************
@@ -917,7 +998,7 @@ public:
 	{
 	    // sort locally
 	    if (K < 4096)
-		radixsort_CI(R.data(), R.size(), 0, K);
+		radixsort_CI<X>(R.data(), R.size(), 0, K);
 	    else
 		std::sort(R.begin(), R.end());
 	    
@@ -1510,7 +1591,7 @@ public:
 	    }
 	}
 
-	std::cout << "done creating S_i - mem = " << getmemusage() << "\n";
+	std::cout << "done creating S_i's - mem = " << getmemusage() << "\n";
 
 	// **********************************************************************
 	// *** Sample sort tuple arrays
@@ -1518,7 +1599,10 @@ public:
 	    for (unsigned int k = 0; k < X; ++k)
 	    {
 		// TODO: sort less - not all S[k] must be sorted to depth X-1 (needs additional lookup table)
-		std::sort(S[k].begin(), S[k].end(), cmpTupleNdepth<X-1>);
+		if (K < 4096)
+		    radixsort_CI2<X-1>(S[k].data(), S[k].size(), 0, K);
+		else
+		    std::sort(S[k].begin(), S[k].end(), cmpTupleNdepth<X-1>);
 	    }
 
 	    // select equidistant samples
