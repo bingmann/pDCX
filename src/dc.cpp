@@ -33,11 +33,13 @@
 #include "yuta-sais-lite.h"
 #include "sachecker.h"
 
+#define DBG_LIMIT	100
+
 #define DBG_ARRAY(dbg,text,X)  do {						\
     if (dbg)									\
     {										\
-	std::cout << text << " line " << __LINE__ << " : i - " #X "[i]\n"; \
- 	for (unsigned int i = 0; i < X.size(); ++i)				\
+	std::cout << text << " line " << __LINE__ << " : i - " #X "[i] - total size " << X.size() << "\n"; \
+ 	for (unsigned int i = 0; i < X.size() && i < DBG_LIMIT; ++i)		\
 	    std::cout << i << " : " << X[i] << "\n";				\
     }										\
 } while(0)
@@ -45,8 +47,8 @@
 #define DBG_ARRAY2(dbg,text,X,Xsize)  do {					\
     if (dbg)									\
     {										\
-	std::cout << text << " line " << __LINE__ << " : i - " #X "[i]\n"; \
- 	for (unsigned int i = 0; i < (unsigned int)(Xsize); ++i)		\
+	std::cout << text << " line " << __LINE__ << " : i - " #X "[i] - total size " << Xsize << "\n"; \
+ 	for (unsigned int i = 0; i < (unsigned int)(Xsize) && i < DBG_LIMIT; ++i) \
 	    std::cout << i << " : " << X[i] << "\n";				\
     }										\
 } while(0)
@@ -466,7 +468,13 @@ public:
 		if (chars[i] == o.chars[i]) continue;
 		return chars[i] < o.chars[i];
 	    }
-	    return false;
+	    return (index < o.index);
+	}
+
+	static inline
+	bool cmpIndex(const TupleS& a, const TupleS& b)
+	{
+	    return (a.index < b.index);
 	}
 
 	bool operator== (const TupleS& o) const
@@ -568,6 +576,12 @@ public:
 	    return;
 	}
 
+	if (depth == MaxDepth) {
+	    // still have to finish sort of first rank as tie breaker
+	    std::sort(array, array + n, TupleS::cmpIndex);
+	    return;
+	}
+
 	size_t bucketsize[K];
 	memset(bucketsize, 0, K * sizeof(size_t));
 	alphabet_type* oracle = (alphabet_type*)malloc(n * sizeof(alphabet_type));
@@ -594,8 +608,6 @@ public:
 	    i += bucketsize[oracle[i]];
 	}
 	free(oracle);
-
-	if (depth+1 == MaxDepth) return;
 
 	size_t bsum = 0;
 	for (size_t i=0; i < K; bsum += bucketsize[i++]) {
@@ -1093,6 +1105,9 @@ public:
 
 	    std::vector<TupleS> recvbuf ( recvoff[ nprocs ] );
 
+	    //DBG_ARRAY2(1, "sendcnt", sendcnt, nprocs);
+	    //DBG_ARRAY2(1, "recvcnt", recvcnt, nprocs);
+
 	    MPI_Alltoallv( R.data(), sendcnt, sendoff, MPI_TUPLE_SAMPLE,
 			   recvbuf.data(), recvcnt, recvoff, MPI_TUPLE_SAMPLE, MPI_COMM_WORLD );
 
@@ -1110,6 +1125,8 @@ public:
 
 	DBG_ARRAY(debug_sortsample, "Sorted sample suffixes", R);
 	std::cout << "done global sort sample suffixes - mem = " << getmemusage() << "\n";
+
+	std::cout << "myproc " << myproc << " R.size() = " << R.size() << "\n";
 
 	// R contains DC-sample tuples in sorted order
 
