@@ -3,26 +3,47 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+#include <numeric>
 #include <iomanip>
 #include <assert.h>
 #include <inttypes.h>
 
 bool isdiffcover(int n, const std::vector<int>& DC)
 {
-    unsigned int x = 0;
+    std::vector<char> hit(n);
     
     for (unsigned int i = 0; i < DC.size(); ++i)
     {
 	for (unsigned int j = 0; j < DC.size(); ++j)
 	{
-	    x |= 1 << ((DC[i] - DC[j] + n) % n);
+	    hit[ (DC[i] - DC[j] + n) % n ] = 1;
 	}
     }
 
-    return (x + 1 == (1 << n));
+    unsigned int sum = 0;
+    for (unsigned int i = 0; i < hit.size(); ++i)
+	sum += hit[i];
+
+    return (sum == n);
 }
 
-void find_diffcover(int n)
+void increment(std::vector<char>& num)
+{
+    // increment number represented in bit vector
+
+    for (unsigned int i = 1; i < num.size(); ++i)
+    {
+	if (num[i] == 1)
+	    num[i] = 0;
+	else
+	{
+	    num[i] = 1;
+	    return;
+	}
+    }
+}
+
+void find_diffcover(unsigned int n)
 {
     // enumerate all 2^n vectors
     // but skip those equivalent via cyclic shifts by fixing the first bit = 1
@@ -30,20 +51,19 @@ void find_diffcover(int n)
     // second version: fix the second bit = 1, as 0 is always included in a diffcover.
 
     unsigned int minsize = n;
-
     unsigned int mindelta = n*n;
-
     std::vector< std::vector<int> > minlist;
 
-    for (uint64_t x = 0; x < (1 << n); x += 1)
-    {
-	// generate DC from x regarded as a bitfield
+    std::vector<char> DCbits (n+1, 0);
 
+    // enumerate all 2^n vectors
+    for(DCbits[0] = 1; DCbits[n] == 0; increment(DCbits))
+    {	
 	std::vector<int> DC;
 
 	for (unsigned int i = 0; i < n; ++i)
 	{
-	    if (x & (1LLU << i)) {
+	    if (DCbits[i]) {
 		DC.push_back(i);
 	    }
 	}
@@ -106,6 +126,9 @@ void find_diffcover(int n)
 	const unsigned int X = n;
 	const unsigned int D = DC.size();
 
+	//std::cerr << " " << D << ",";
+	//return;
+
 	// calculate character tuple length in comparison of B_k in complement.
 	std::vector<int> DXL (X - D, -1);
 	
@@ -166,10 +189,13 @@ void find_diffcover(int n)
 	}
 	of << "\n";
 
+	const unsigned int X = n;
+	const unsigned int D = DC.size();
+
+#if 0
 	// calculate DX complement
 
 	std::vector<int> DX (n - DC.size(), -1);
-
 	{
 	    unsigned int e = 0, j = 0;
 	    for (unsigned int d = 0; d < DC.size(); ++d)
@@ -191,36 +217,58 @@ void find_diffcover(int n)
 	    of << "\n";
 	}
 	
-	const unsigned int X = n;
-	const unsigned int D = DC.size();
-
 	// calculate character tuple length in comparison of B_k in complement.
-	std::vector<int> DXL (X - D, -1);
-	
-	for (unsigned int i = 0; i < X - D; ++i)
 	{
-	    unsigned int p = DX[i];
-
-	    unsigned int delta = X;
-
-	    // find smallest increment so that p+delta hits element in D
-	    for (unsigned int j = 0; j < D; ++j)
+	    std::vector<int> DXL (X - D, -1);
+	
+	    for (unsigned int i = 0; i < X - D; ++i)
 	    {
-		delta = std::min(delta, (DC[j] - p + X) % X);
+		unsigned int p = DX[i];
+
+		unsigned int delta = X;
+
+		// find smallest increment so that p+delta hits element in D
+		for (unsigned int j = 0; j < D; ++j)
+		{
+		    delta = std::min(delta, (DC[j] - p + X) % X);
+		}
+
+		DXL[i] = delta;
 	    }
 
-	    DXL[i] = delta;
+	    unsigned int dxlsum = 0;
+
+	    of << "DXL (delta): ";
+	    for (unsigned int dc = 0; dc < X-D; ++dc) {
+		of << DXL[dc] << " ";
+		dxlsum += DXL[dc];
+	    }
+	    of << " sum = " << dxlsum << "\n";
+	}
+#endif
+	// calculate sorting depth of samples and non-samples
+	{
+	    unsigned int depthsum = 0;
+
+	    std::cout << "Sorting depth:";
+	    for (unsigned int a = 0; a < X; ++a)
+	    {
+		unsigned int maxdepth = 0;
+
+		for (unsigned int d = 0; d < D; ++d) {
+		    maxdepth = std::max(maxdepth, (DC[d] - a + X) % X);
+		}
+
+		std::cout << " " << maxdepth;
+		depthsum += maxdepth;
+	    }
+	    std::cout << " = " << depthsum << "\n";
+
+	    std::cerr << " " << depthsum << ",";
+	    return;
 	}
 
-	unsigned int dxlsum = 0;
-
-	of << "DXL (delta): ";
-	for (unsigned int dc = 0; dc < X-D; ++dc) {
-	    of << DXL[dc] << " ";
-	    dxlsum += DXL[dc];
-	}
-	of << " sum = " << dxlsum << "\n";
-
+	// calculate comparison depth and rank lookup table
 	std::vector<bool> inDC (X, false);
 	
 	for (unsigned int i = 0; i < DC.size(); ++i)
