@@ -1,4 +1,4 @@
-AC_PREREQ(2.65)
+AC_PREREQ(2.63)
 AC_INIT(pDCX, 0.0.0)
 AC_CONFIG_SRCDIR([src/dc.cpp])
 AC_CONFIG_AUX_DIR(acscripts)
@@ -21,8 +21,8 @@ AC_ARG_ENABLE(optimize,
 		       [Build with full optimization @<:@default=no@:>@]),
         [ case "${enableval}" in
           yes)
-                CFLAGS="$CFLAGS -O3 -fomit-frame-pointer -march=native";
-                CXXFLAGS="$CXXFLAGS -O3 -fomit-frame-pointer -march=native";
+                CFLAGS="$CFLAGS -O3 -fomit-frame-pointer -march=native -g";
+                CXXFLAGS="$CXXFLAGS -O3 -fomit-frame-pointer -march=native -g";
           	;;
           no) ;;
           *) AC_MSG_ERROR(bad value ${enableval} for --enable-optimize) ;;
@@ -46,7 +46,7 @@ AC_ARG_ENABLE(ndebug,
 
 # find MPI and configure build environment
 
-AX_PROG_CXX_MPI(true,[],[ AC_MSG_FAILURE([MPI compiler requested, but couldn't use MPI.]) ])
+AX_PROG_CXX_MPI(true,[],[ AC_MSG_ERROR([MPI compiler requested, but couldn't use MPI.]) ])
 AC_LANG([C++])
 
 # Checks for programs.

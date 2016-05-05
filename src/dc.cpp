@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <limits.h>
 #include <inttypes.h>
 
@@ -393,7 +394,7 @@ public:
 
 //static const unsigned int inDC[X] = { 1, 1, 0, 1, 0, 0, 0 };
 
-    static const bool debug		= true;
+    static const bool debug		= false;
     static const bool debug_input	= false;
     static const bool debug_rebalance	= false;
     static const bool debug_sortsample	= false;
@@ -796,7 +797,7 @@ public:
 	const int* deprank = DCParam::cmpDepthRanks[v1][v2];
 
 	if (debug_compare)
-	    std::cout << "cmp " << v1 << "(" << t1.index << ") ? " << v2 << "(" << t2.index << ") - depth " << deprank[0] << "\n";
+	    std::cout << "cmp " << v1 << t1 << " ? " << v2 << t2 << " - depth " << deprank[0] << "\n";
 
 	for (int d = 0; d < deprank[0]; ++d)
 	{
@@ -2333,6 +2334,36 @@ public:
     }
 };
 
+template <typename DCParam>
+void DCXRun(int myproc, const char* input, const char* output)
+{
+    double tstart = MPI_Wtime();
+
+    pDCX<DCParam, uint8_t> dcx;
+
+    dcx.run(input);
+
+    if (output) {
+        dcx.writeSA(output);
+    }
+
+    MPI_Barrier( MPI_COMM_WORLD );
+
+    double tend = MPI_Wtime();
+
+    if (myproc == 0) {
+        std::cerr << "RESULT"
+                  << " algo=pDC" << DCParam::X
+                  << " time=" << (tend - tstart)
+                  << (getenv("RESULT") ? getenv("RESULT") : "")
+                  << std::endl;
+    }
+
+    std::cout << "Suffix array checker: " << dcx.checkSA() << "\n";
+
+    dcx.checkSAlocal(input);
+}
+
 int main( int argc, char **argv )
 {
     MPI_Init( &argc, &argv );
@@ -2348,25 +2379,24 @@ int main( int argc, char **argv )
 	return -1;
     }
 
-    if ( argc < 2 ) {
-	std::cout << "No input file! Call using mpdrun -np 4 ./pDCX <input-file> [output-file]" << std::endl;
+    if ( argc < 3 ) {
+        std::cout << "No input file! "
+                  << "Call using mpirun -np 4 ./pDCX <3/7/13> <input> [output]"
+                  << std::endl;
 	return 0;
     }
 
-    {
-	pDCX<DC7Param, uint8_t> dcx;
-
-	dcx.run(argv[1]);
-
-	if ( argc >= 3 ) {
-	    dcx.writeSA(argv[2]);
-	}
-
-	MPI_Barrier( MPI_COMM_WORLD );
-
-	std::cout << "Suffix array checker: " << dcx.checkSA() << "\n";
-
-	dcx.checkSAlocal(argv[1]);
+    if (strcmp(argv[1], "3") == 0) {
+        DCXRun<DC3Param>(myproc, argv[2], argv[3]);
+    }
+    else if (strcmp(argv[1], "7") == 0) {
+        DCXRun<DC7Param>(myproc, argv[2], argv[3]);
+    }
+    else if (strcmp(argv[1], "13") == 0) {
+        DCXRun<DC13Param>(myproc, argv[2], argv[3]);
+    }
+    else {
+        std::cout << "Usage: pDCX <3/7/13> <input> [output]" << std::endl;
     }
 
     MPI_Finalize();
