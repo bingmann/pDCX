@@ -1,0 +1,133 @@
+******************** DCX (process 1) depth 0 ********************
+Parameters:
+  globalSize = 12
+  localStride = 9
+  localSize = 3
+  localSizeExtra = 3
+  globalMultipleOfX = 4
+  localMultipleOfX (aka M) = 1
+  samplesize = 2
+  K = 256
+  current memusage = mem 0
+Input (without extra tuples) line 978 : i - input.data()[i] - total size 3
+0 : p
+1 : i
+2 : 0
+Input (extra tuples) line 980 : i - (input.data() + localSize)[i] - total size 0
+done local sort sample suffixes - mem = 0
+sizeof R = 16 - 16
+Sample suffixes line 1006 : i - R[i] - total size 2
+0 : ([i 0 0],10)
+1 : ([0 0 0],11)
+done local sort sample suffixes
+Locally sorted sample suffixes line 1019 : i - R[i] - total size 2
+0 : ([0 0 0],11)
+1 : ([i 0 0],10)
+Splitters positions line 1075 : i - splitterpos[i] - total size 3
+0 : 0
+1 : 2
+2 : 2
+Sorted sample suffixes line 1126 : i - R[i] - total size 6
+0 : ([i p p],7)
+1 : ([i s s],1)
+2 : ([i s s],4)
+3 : ([p p i],8)
+4 : ([s s i],2)
+5 : ([s s i],5)
+done global sort sample suffixes - mem = 0
+myproc 1 R.size() = 6
+Giving name 1 to ([i p p],7)
+Giving name 2 to ([i s s],1)
+Giving name 3 to ([p p i],8)
+Giving name 4 to ([s s i],2)
+given: dupnames 2 names given: 4 total: 6
+Local Names line 1172 : i - P[i] - total size 6
+0 : (7,1,1)
+1 : (1,2,0)
+2 : (4,2,0)
+3 : (8,3,1)
+4 : (2,4,0)
+5 : (5,4,0)
+Global Names line 1183 : i - P[i] - total size 6
+0 : (7,5,1)
+1 : (1,6,0)
+2 : (4,6,0)
+3 : (8,7,1)
+4 : (2,8,0)
+5 : (5,8,0)
+last name: 8 =? 10
+recursion: 1
+done naming - mem = 0
+namesGlobalSize = 10
+namesLocalStride = 6
+---------------------   RECURSION local sais ---------------- 3
+---------------------   END  RECURSION  ---------------  - mem = 0
+Pairs P (sorted by index) line 1497 : i - P[i] - total size 0
+Pairs P (globally sorted by index) line 1541 : i - recvBufPair.data()[i] - total size 4
+0 : (10,5,1)
+1 : (11,4,1)
+2 : (13,1,1)
+3 : (14,0,1)
+Pairs P (extra tuples) line 1552 : i - temp[i] - total size 2
+0 : (1,8,0)
+1 : (2,11,0)
+Pairs P (globally sorted by index + extra tuples) line 1575 : i - P[i] - total size 6
+0 : (10,5,1)
+1 : (11,4,1)
+2 : (13,1,1)
+3 : (14,0,1)
+4 : (16,1,0)
+5 : (17,0,0)
+done creating S_i's - mem = 0
+cmp 0(c[p i],r[5 4],9) ? 0(c[m i],r[8 11],0) - depth 1
+cmp 1(c[i 0],r[5 4],10) ? 0(c[m i],r[8 11],0) - depth 1
+cmp 2(c[0 0],r[4 1],11) ? 0(c[m i],r[8 11],0) - depth 2
+Splitters S.0 line 1688 : i - splitterpos[k][i] - total size 3
+0 : 0
+1 : 0
+2 : 1
+Splitters S.1 line 1688 : i - splitterpos[k][i] - total size 3
+0 : 0
+1 : 1
+2 : 1
+Splitters S.2 line 1688 : i - splitterpos[k][i] - total size 3
+0 : 0
+1 : 1
+2 : 1
+After samplesort S0 line 1771 : i - S[k][i] - total size 4
+0 : (c[m i],r[8 11],0)
+1 : (c[p i],r[5 4],9)
+2 : (c[s i],r[6 9],6)
+3 : (c[s i],r[7 10],3)
+After samplesort S1 line 1771 : i - S[k][i] - total size 0
+After samplesort S2 line 1771 : i - S[k][i] - total size 3
+0 : (c[p p],r[9 5],8)
+1 : (c[s s],r[10 6],5)
+2 : (c[s s],r[11 7],2)
+cmp 0(0) ? 2(8) - depth 2
+Winning tuple: (c[m i],r[8 11],0)
+cmp 0(9) ? 2(8) - depth 2
+Winning tuple: (c[p i],r[5 4],9)
+cmp 0(6) ? 2(8) - depth 2
+Winning tuple: (c[p p],r[9 5],8)
+cmp 0(6) ? 2(5) - depth 2
+Winning tuple: (c[s i],r[6 9],6)
+cmp 0(3) ? 2(5) - depth 2
+Winning tuple: (c[s i],r[7 10],3)
+Winning tuple: (c[s s],r[10 6],5)
+Winning tuple: (c[s s],r[11 7],2)
+Suffixarray merged line 1798 : i - suffixarray[i] - total size 7
+0 : (c[m i],r[8 11],0)
+1 : (c[p i],r[5 4],9)
+2 : (c[p p],r[9 5],8)
+3 : (c[s i],r[6 9],6)
+4 : (c[s i],r[7 10],3)
+5 : (c[s s],r[10 6],5)
+6 : (c[s s],r[11 7],2)
+done merging suffixarray - mem = 0
+******************** finished DCX (process 1) depth 0 ********************
+******************** SAChecker (process 1) ********************
+localStride = 9
+localSA.size() = 7
+localInput.size() = 3
+Suffix array checker: 1

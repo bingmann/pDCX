@@ -1,0 +1,318 @@
+Total input size = 12 bytes. localStride = 9
+Read for process 1 from pos 9 of length 3
+Read for process 0 from pos 0 of length 9
+******************** DCX (process 0) depth 0 ********************
+Parameters:
+  globalSize = 12
+  localStride = 9
+  localSize = 9
+  localSizeExtra = 11
+  globalMultipleOfX = 4
+  localMultipleOfX (aka M) = 3
+  samplesize = 2
+  K = 256
+  current memusage = mem 0
+Input (without extra tuples) line 978 : i - input.data()[i] - total size 9
+0 : m
+1 : i
+2 : s
+3 : s
+4 : i
+5 : s
+6 : s
+7 : i
+8 : p
+Input (extra tuples) line 980 : i - (input.data() + localSize)[i] - total size 2
+0 : p
+1 : i
+done local sort sample suffixes - mem = 0
+sizeof R = 48 - 48
+Sample suffixes line 1006 : i - R[i] - total size 6
+0 : ([i s s],1)
+1 : ([s s i],2)
+2 : ([i s s],4)
+3 : ([s s i],5)
+4 : ([i p p],7)
+5 : ([p p i],8)
+done local sort sample suffixes
+Locally sorted sample suffixes line 1019 : i - R[i] - total size 6
+0 : ([i p p],7)
+1 : ([i s s],1)
+2 : ([i s s],4)
+3 : ([p p i],8)
+4 : ([s s i],2)
+5 : ([s s i],5)
+Sample splitters line 1048 : i - samplebufall[i] - total size 4
+0 : ([0 0 0],11)
+1 : ([i 0 0],10)
+2 : ([i p p],7)
+3 : ([p p i],8)
+Selected splitters line 1053 : i - splitterbuf[i] - total size 2
+0 : ([0 0 0],11)
+1 : ([i p p],7)
+Splitters positions line 1075 : i - splitterpos[i] - total size 3
+0 : 0
+1 : 0
+2 : 6
+Sorted sample suffixes line 1126 : i - R[i] - total size 2
+0 : ([0 0 0],11)
+1 : ([i 0 0],10)
+done global sort sample suffixes - mem = 0
+myproc 0 R.size() = 2
+Giving name 1 to ([0 0 0],11)
+Giving name 2 to ([i 0 0],10)
+given: dupnames 0 names given: 2 total: 2
+Local Names line 1172 : i - P[i] - total size 2
+0 : (11,1,1)
+1 : (10,2,1)
+Global Names line 1183 : i - P[i] - total size 2
+0 : (11,3,1)
+1 : (10,4,1)
+last name: 8 =? 10
+recursion: 1
+done naming - mem = 0
+namesGlobalSize = 10
+namesLocalStride = 6
+Pall line 1231 : i - Pall[i] - total size 10
+0 : (1,6,0)
+1 : (4,6,0)
+2 : (7,5,1)
+3 : (10,4,1)
+4 : (13,1,1)
+5 : (2,8,0)
+6 : (5,8,0)
+7 : (8,7,1)
+8 : (11,3,1)
+9 : (14,0,1)
+---------------------   RECURSION local sais ---------------- 9
+Global Names sorted index line 1444 : i - Pall[i] - total size 10
+0 : (11,3,1)
+1 : (10,4,1)
+2 : (7,5,1)
+3 : (1,6,0)
+4 : (4,6,0)
+5 : (8,7,1)
+6 : (2,8,0)
+7 : (5,8,0)
+8 : (13,1,1)
+9 : (14,0,1)
+Global Names sorted cmpModDiv line 1448 : i - Pall[i] - total size 10
+0 : (1,6,0)
+1 : (4,6,0)
+2 : (7,5,1)
+3 : (10,4,1)
+4 : (13,1,1)
+5 : (2,8,0)
+6 : (5,8,0)
+7 : (8,7,1)
+8 : (11,3,1)
+9 : (14,0,1)
+Recursion input line 1454 : i - namearray[i] - total size 10
+0 : 6
+1 : 6
+2 : 5
+3 : 4
+4 : 1
+5 : 8
+6 : 8
+7 : 7
+8 : 3
+9 : 0
+Recursive SA line 1462 : i - rSA[i] - total size 10
+0 : 9
+1 : 4
+2 : 8
+3 : 3
+4 : 2
+5 : 1
+6 : 0
+7 : 7
+8 : 6
+9 : 5
+Fixed Global Names sorted cmpModDiv line 1470 : i - Pall[i] - total size 10
+0 : (1,8,0)
+1 : (4,7,0)
+2 : (7,6,1)
+3 : (10,5,1)
+4 : (13,1,1)
+5 : (2,11,0)
+6 : (5,10,0)
+7 : (8,9,1)
+8 : (11,4,1)
+9 : (14,0,1)
+---------------------   END  RECURSION  ---------------  - mem = 0
+Pairs P (sorted by index) line 1497 : i - P[i] - total size 10
+0 : (1,8,0)
+1 : (2,11,0)
+2 : (4,7,0)
+3 : (5,10,0)
+4 : (7,6,1)
+5 : (8,9,1)
+6 : (10,5,1)
+7 : (11,4,1)
+8 : (13,1,1)
+9 : (14,0,1)
+Pairs P (globally sorted by index) line 1541 : i - recvBufPair.data()[i] - total size 6
+0 : (1,8,0)
+1 : (2,11,0)
+2 : (4,7,0)
+3 : (5,10,0)
+4 : (7,6,1)
+5 : (8,9,1)
+Pairs P (extra tuples) line 1552 : i - temp[i] - total size 2
+0 : (10,5,1)
+1 : (11,4,1)
+Pairs P (globally sorted by index + extra tuples) line 1575 : i - P[i] - total size 8
+0 : (1,8,0)
+1 : (2,11,0)
+2 : (4,7,0)
+3 : (5,10,0)
+4 : (7,6,1)
+5 : (8,9,1)
+6 : (10,5,0)
+7 : (11,4,0)
+done creating S_i's - mem = 0
+cmp 1(c[i p],r[6 9],7) ? 0(c[m i],r[8 11],0) - depth 1
+cmp 2(c[p p],r[9 5],8) ? 1(c[i p],r[6 9],7) - depth 0
+break tie using ranks 0 - 0 = 9 - 6
+cmp 2(c[p p],r[9 5],8) ? 0(c[m i],r[8 11],0) - depth 2
+cmp 0(c[s i],r[6 9],6) ? 1(c[i p],r[6 9],7) - depth 1
+cmp 0(c[s i],r[6 9],6) ? 2(c[p p],r[9 5],8) - depth 2
+cmp 1(c[i s],r[7 10],4) ? 1(c[i p],r[6 9],7) - depth 0
+break tie using ranks 0 - 0 = 7 - 6
+cmp 1(c[i s],r[7 10],4) ? 0(c[s i],r[6 9],6) - depth 1
+cmp 1(c[i s],r[7 10],4) ? 2(c[p p],r[9 5],8) - depth 0
+break tie using ranks 0 - 0 = 7 - 9
+cmp 1(c[i s],r[7 10],4) ? 0(c[m i],r[8 11],0) - depth 1
+cmp 1(c[i s],r[7 10],4) ? 1(c[i p],r[6 9],7) - depth 0
+break tie using ranks 0 - 0 = 7 - 6
+cmp 2(c[s s],r[10 6],5) ? 1(c[i p],r[6 9],7) - depth 0
+break tie using ranks 0 - 0 = 10 - 6
+cmp 2(c[s s],r[10 6],5) ? 0(c[s i],r[6 9],6) - depth 2
+cmp 0(c[p i],r[5 4],9) ? 1(c[i p],r[6 9],7) - depth 1
+cmp 0(c[p i],r[5 4],9) ? 2(c[s s],r[10 6],5) - depth 2
+cmp 0(c[p i],r[5 4],9) ? 0(c[s i],r[6 9],6) - depth 1
+cmp 0(c[p i],r[5 4],9) ? 2(c[p p],r[9 5],8) - depth 2
+cmp 0(c[p i],r[5 4],9) ? 0(c[m i],r[8 11],0) - depth 1
+cmp 1(c[i 0],r[5 4],10) ? 1(c[i p],r[6 9],7) - depth 0
+break tie using ranks 0 - 0 = 5 - 6
+cmp 2(c[0 0],r[4 1],11) ? 1(c[i 0],r[5 4],10) - depth 0
+break tie using ranks 0 - 0 = 4 - 5
+cmp 0(c[p i],r[5 4],9) ? 2(c[0 0],r[4 1],11) - depth 2
+cmp 0(c[p i],r[5 4],9) ? 2(c[s s],r[10 6],5) - depth 2
+cmp 0(c[p i],r[5 4],9) ? 0(c[s i],r[6 9],6) - depth 1
+cmp 0(c[p i],r[5 4],9) ? 2(c[p p],r[9 5],8) - depth 2
+cmp 0(c[p i],r[5 4],9) ? 0(c[p i],r[5 4],9) - depth 1
+break tie using ranks 0 - 0 = 5 - 5
+cmp 1(c[i 0],r[5 4],10) ? 2(c[0 0],r[4 1],11) - depth 0
+break tie using ranks 0 - 0 = 5 - 4
+cmp 1(c[i 0],r[5 4],10) ? 2(c[s s],r[10 6],5) - depth 0
+break tie using ranks 0 - 0 = 5 - 10
+cmp 1(c[i 0],r[5 4],10) ? 0(c[s i],r[6 9],6) - depth 1
+cmp 1(c[i 0],r[5 4],10) ? 2(c[p p],r[9 5],8) - depth 0
+break tie using ranks 0 - 0 = 5 - 9
+cmp 1(c[i 0],r[5 4],10) ? 0(c[p i],r[5 4],9) - depth 1
+cmp 1(c[i 0],r[5 4],10) ? 0(c[p i],r[5 4],9) - depth 1
+cmp 1(c[i 0],r[5 4],10) ? 0(c[m i],r[8 11],0) - depth 1
+cmp 1(c[i 0],r[5 4],10) ? 1(c[i s],r[7 10],4) - depth 0
+break tie using ranks 0 - 0 = 5 - 7
+cmp 1(c[i 0],r[5 4],10) ? 1(c[i p],r[6 9],7) - depth 0
+break tie using ranks 0 - 0 = 5 - 6
+cmp 1(c[i 0],r[5 4],10) ? 1(c[i 0],r[5 4],10) - depth 0
+break tie using ranks 0 - 0 = 5 - 5
+cmp 2(c[0 0],r[4 1],11) ? 2(c[0 0],r[4 1],11) - depth 0
+break tie using ranks 0 - 0 = 4 - 4
+cmp 2(c[0 0],r[4 1],11) ? 2(c[s s],r[10 6],5) - depth 0
+break tie using ranks 0 - 0 = 4 - 10
+cmp 2(c[0 0],r[4 1],11) ? 0(c[s i],r[6 9],6) - depth 2
+cmp 2(c[0 0],r[4 1],11) ? 2(c[p p],r[9 5],8) - depth 0
+break tie using ranks 0 - 0 = 4 - 9
+cmp 2(c[0 0],r[4 1],11) ? 0(c[p i],r[5 4],9) - depth 2
+cmp 2(c[0 0],r[4 1],11) ? 0(c[p i],r[5 4],9) - depth 2
+cmp 2(c[0 0],r[4 1],11) ? 0(c[m i],r[8 11],0) - depth 2
+cmp 2(c[0 0],r[4 1],11) ? 1(c[i s],r[7 10],4) - depth 0
+break tie using ranks 0 - 0 = 4 - 7
+cmp 2(c[0 0],r[4 1],11) ? 1(c[i p],r[6 9],7) - depth 0
+break tie using ranks 0 - 0 = 4 - 6
+cmp 2(c[0 0],r[4 1],11) ? 1(c[i 0],r[5 4],10) - depth 0
+break tie using ranks 0 - 0 = 4 - 5
+cmp 2(c[0 0],r[4 1],11) ? 1(c[i 0],r[5 4],10) - depth 0
+break tie using ranks 0 - 0 = 4 - 5
+cmp 2(c[0 0],r[4 1],11) ? 2(c[0 0],r[4 1],11) - depth 0
+break tie using ranks 0 - 0 = 4 - 4
+Sample splitters line 1654 : i - samplebufall[i] - total size 12
+0 : (c[0 0],r[4 1],11)
+1 : (c[0 0],r[4 1],11)
+2 : (c[i 0],r[5 4],10)
+3 : (c[i 0],r[5 4],10)
+4 : (c[i p],r[6 9],7)
+5 : (c[i s],r[7 10],4)
+6 : (c[m i],r[8 11],0)
+7 : (c[p i],r[5 4],9)
+8 : (c[p i],r[5 4],9)
+9 : (c[p p],r[9 5],8)
+10 : (c[s i],r[6 9],6)
+11 : (c[s s],r[10 6],5)
+Selected splitters line 1659 : i - splitterbuf[i] - total size 2
+0 : (c[0 0],r[4 1],11)
+1 : (c[m i],r[8 11],0)
+cmp 0(c[s i],r[6 9],6) ? 0(c[m i],r[8 11],0) - depth 1
+cmp 0(c[m i],r[8 11],0) ? 0(c[m i],r[8 11],0) - depth 1
+break tie using ranks 0 - 0 = 8 - 8
+cmp 1(c[i s],r[7 10],4) ? 0(c[m i],r[8 11],0) - depth 1
+cmp 1(c[i s],r[8 11],1) ? 0(c[m i],r[8 11],0) - depth 1
+cmp 2(c[s s],r[10 6],5) ? 0(c[m i],r[8 11],0) - depth 2
+cmp 2(c[p p],r[9 5],8) ? 0(c[m i],r[8 11],0) - depth 2
+Splitters S.0 line 1688 : i - splitterpos[k][i] - total size 3
+0 : 0
+1 : 0
+2 : 3
+Splitters S.1 line 1688 : i - splitterpos[k][i] - total size 3
+0 : 0
+1 : 3
+2 : 3
+Splitters S.2 line 1688 : i - splitterpos[k][i] - total size 3
+0 : 0
+1 : 0
+2 : 3
+After samplesort S0 line 1771 : i - S[k][i] - total size 0
+After samplesort S1 line 1771 : i - S[k][i] - total size 4
+0 : (c[i 0],r[5 4],10)
+1 : (c[i p],r[6 9],7)
+2 : (c[i s],r[7 10],4)
+3 : (c[i s],r[8 11],1)
+After samplesort S2 line 1771 : i - S[k][i] - total size 1
+0 : (c[0 0],r[4 1],11)
+cmp 1(10) ? 2(11) - depth 0
+break tie using ranks 0 - 0 = 5 - 4
+Winning tuple: (c[0 0],r[4 1],11)
+Winning tuple: (c[i 0],r[5 4],10)
+Winning tuple: (c[i p],r[6 9],7)
+Winning tuple: (c[i s],r[7 10],4)
+Winning tuple: (c[i s],r[8 11],1)
+Suffixarray merged line 1798 : i - suffixarray[i] - total size 5
+0 : (c[0 0],r[4 1],11)
+1 : (c[i 0],r[5 4],10)
+2 : (c[i p],r[6 9],7)
+3 : (c[i s],r[7 10],4)
+4 : (c[i s],r[8 11],1)
+done merging suffixarray - mem = 0
+******************** finished DCX (process 0) depth 0 ********************
+******************** SAChecker (process 0) ********************
+localStride = 9
+localSA.size() = 5
+localInput.size() = 11
+Suffix array checker: 1
+result suffix array: 
+0 : 11 : 0 
+1 : 10 : i 0 
+2 : 7 : i p p i 0 
+3 : 4 : i s s i p p i 0 
+4 : 1 : i s s i s s i p p i 0 
+5 : 0 : m i s s i s s i p p i 0 
+6 : 9 : p i 0 
+7 : 8 : p p i 0 
+8 : 6 : s i p p i 0 
+9 : 3 : s i s s i p p i 0 
+10 : 5 : s s i p p i 0 
+11 : 2 : s s i s s i p p i 0 
